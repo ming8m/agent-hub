@@ -1,0 +1,6 @@
+{
+  "example": {
+    "command": ["python", "-c", "print('ready')"],
+    "desc": "Synthetic example"
+  }
+}

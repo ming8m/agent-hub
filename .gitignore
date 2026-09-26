@@ -1,0 +1,11 @@
+# Local runtime data and configuration
+agents.json
+agents.json.lock
+.bus-token
+inbox/
+log/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/

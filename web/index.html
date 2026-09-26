@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="agent-bus-token" content="__BUS_TOKEN__">
+  <link rel="icon" href="data:,">
+  <title>Agent Hub · 协作控制台</title>
+  <link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" aria-label="工作区与 Agent">
+    <div class="brand"><div class="brandmark" aria-hidden="true">A</div><div><b>Agent Hub</b><small>工作空间</small></div></div>
+    <div class="workspace"><span class="workspace-icon" aria-hidden="true">◈</span><span><b>工作空间</b><small>Agent 协作</small></span><span class="chev">⌄</span></div>
+    <div class="section-label">派发模式</div>
+    <div class="modebox" role="radiogroup" aria-label="本轮任务派发模式">
+      <button class="mode-option active" role="radio" aria-checked="true" data-mode="direct" type="button"><span class="mode-symbol">◎</span><span><b>无主 Agent</b><small>由你选择并直接派发</small></span><span class="radio"></span></button>
+      <button class="mode-option" id="modeOrchestrated" role="radio" aria-checked="false" data-mode="orchestrated" type="button"><span class="mode-symbol purple">✦</span><span><b>启用主 Agent</b><small>由主 Agent 规划并协调</small></span><span class="radio"></span></button>
+    </div>
+    <small class="mode-explainer" id="modeExplainer">无主模式只向本轮选择的 Agent 派发任务。</small>
+    <section class="lead-config" id="hubSettings" aria-labelledby="hubSettingsTitle">
+      <div class="lead-label"><b id="hubSettingsTitle">主 Agent 设置</b><span class="state-pill" id="orchestratorState"><i></i>读取中</span></div>
+      <label class="field-label" for="orchestratorSelect">主 Agent</label>
+      <select id="orchestratorSelect" class="field-select"><option value="">选择已注册 Agent</option></select>
+      <label class="switch-row"><input id="orchestratorEnabled" type="checkbox"><span>启用主 Agent</span></label>
+      <label class="field-label" for="summaryAgentSelect">模型摘要 Agent</label>
+      <select id="summaryAgentSelect" class="field-select"><option value="">不配置摘要 Agent</option></select>
+      <label class="field-label" for="summaryPolicy">摘要生成时机</label>
+      <select id="summaryPolicy" class="field-select"><option value="auto">任务完成后自动生成</option><option value="manual">手动请求</option></select>
+      <small class="lead-note" id="summaryAgentState">未配置模型摘要 Agent。逐项摘要和本轮汇总将不可用。</small>
+      <label class="field-label" for="defaultMode">默认派发模式</label>
+      <select id="defaultMode" class="field-select"><option value="direct">无主 Agent</option><option value="orchestrated">启用主 Agent</option></select>
+      <label class="field-label" for="defaultDeadline">默认截止时间（秒）</label>
+      <input id="defaultDeadline" class="field-input" type="number" min="1" max="86400" placeholder="不设默认值">
+      <button class="save-config" id="saveConfig" type="button">保存主 Agent 设置</button>
+      <p class="lead-note" id="configMessage">设置仅影响后续任务。主模式会由主 Agent 生成计划，再自动派发或等待审批。</p>
+    </section>
+    <div class="section-label agents-label">已注册 Agent <span id="agentCount">0</span></div>
+    <nav class="agents" id="agentList" aria-label="选择直接派发目标"><div class="empty-side">正在读取注册表…</div></nav>
+    <div class="side-bottom"><div class="health"><span class="health-icon" id="healthIcon">…</span><span><b id="healthTitle">连接服务</b><small id="healthDetail">读取 Hub 状态</small></span></div><div class="profile"><span class="profile-mark" aria-hidden="true">AH</span><span><b>工作空间</b><small>Agent Hub</small></span><span class="connection" id="connectionState">连接中</span></div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div class="crumb"><span>工作空间</span><span class="slash">/</span><b>Agent Hub</b></div><div class="top-actions"><span class="sync" id="syncStatus"><i></i>正在同步</span><button class="help" type="button" id="refreshButton">刷新状态 ↻</button><button class="settings-trigger" id="openSettings" type="button"><span aria-hidden="true">⚙</span> 设置</button></div></header>
+    <section class="content">
+      <div class="heading"><div><div class="eyebrow"><span id="todayDate">TODAY</span><span>·</span> 工作空间</div><h1>任务协作</h1><p>创建并行任务，查看每位 Agent 的状态与回复。</p></div></div>
+      <div class="not-ready-banner hidden" id="orchestratorNotice" role="status"><b>主 Agent 尚未启用</b><span>请在侧栏选择已注册的主 Agent 并保存设置。启用后可配置自动派发或计划审批。</span></div>
+      <section class="dispatch-card" aria-labelledby="dispatchTitle">
+        <div class="dispatch-head"><div><div class="eyebrow">NEW RUN</div><h2 id="dispatchTitle">创建任务</h2></div><span class="run-mode-pill" id="modePill">无主 Agent · 直接并行</span></div>
+        <label class="field-label" for="prompt">任务内容</label>
+        <textarea id="prompt" class="prompt-input" rows="3" maxlength="100000" placeholder="描述任务目标、交付内容和验收标准…"></textarea>
+        <div class="dispatch-options"><div class="target-area"><div class="field-label" id="targetLabel">接收 Agent <span>可多选，一次并行运行</span></div><div class="target-picks" id="targetPicks"><span class="muted">读取 Agent 注册表后可选择目标</span></div><div id="orchestrationOptions" class="orchestration-options hidden"><label class="field-label" for="dispatchPolicy">计划派发方式</label><select id="dispatchPolicy" class="field-select"><option value="preview">先预览计划，等待我批准</option><option value="auto">计划通过校验后自动派发</option></select><small class="lead-note">计划由主 Agent 生成并校验；预览模式会在派发前显示任务列表。</small></div></div><div class="deadline-area"><label class="field-label" for="runDeadline">本轮截止时间</label><input class="field-input" id="runDeadline" type="datetime-local" step="1"><small id="deadlineHelp">截止时间只提醒，不会中止正在运行的 Agent。</small></div></div>
+        <div class="dispatch-footer"><span id="dispatchHint">请选择一个或多个 Agent。</span><button class="send" id="startRun" type="button" disabled>并行派发 <span>↑</span></button></div>
+      </section>
+      <section class="current-run hidden" id="currentRun">
+        <div class="run-head"><div><div class="eyebrow">RUN <span id="runShortId"></span></div><h2 id="runPrompt"></h2><div class="run-meta"><span id="runModeLabel"></span><span id="runCreatedAt"></span><span class="deadline-chip" id="runDeadlineState"></span></div></div><button class="iconbtn" type="button" id="closeRun" aria-label="收起本轮任务">×</button></div>
+        <div class="run-progress"><div class="progress-title"><b>任务进度</b><span id="runCountLabel">加载中</span></div><div class="progressbar"><i id="runProgressBar"></i></div></div>
+        <div class="run-tasks" id="runTasks" aria-label="各 Agent 任务状态"></div>
+        <section class="plan-panel hidden" id="planPanel" aria-labelledby="planTitle"><div class="summary-head"><div><div class="eyebrow">MASTER PLAN</div><h3 id="planTitle">主 Agent 计划</h3></div><span class="summary-state" id="planState">等待计划</span></div><p class="plan-agent" id="planAgent"></p><div class="plan-content" id="planContent"></div><div class="plan-questions" id="planQuestions"></div><div class="plan-tasks" id="planTasks"></div><button type="button" class="save-config approve-plan hidden" id="approvePlan">批准计划并派发</button></section>
+        <div class="deadline-alert hidden" id="deadlineAlert" role="status"></div>
+        <section class="summary-panel" aria-labelledby="summaryTitle"><div class="summary-head"><div><div class="eyebrow">MODEL SUMMARY</div><h3 id="summaryTitle">本轮汇总</h3></div><span class="summary-state" id="summaryState">模型摘要未就绪</span></div><div id="summaryContent" class="summary-content">本轮未配置可用的摘要 Agent。逐条任务回复和原始全文仍可查看。</div><button type="button" class="text-action" id="requestSummary">请求模型摘要</button><p class="summary-help" id="summaryHelp">摘要由模型生成；不会把 Agent 原始回复伪装为摘要。</p></section>
+        <div class="feed-head"><div><h3>本轮动态</h3><span class="feed-sub">任务状态、回复和 Agent 通信事件</span></div><div class="filters" role="tablist" aria-label="消息关系筛选"><button class="filter active" role="tab" aria-selected="true" data-relation="all" type="button">全部 <span class="filter-count">0</span></button><button class="filter" role="tab" aria-selected="false" data-relation="orchestrator_worker" type="button">主 ↔ 分 <span class="filter-count">0</span></button><button class="filter" role="tab" aria-selected="false" data-relation="worker_worker" type="button">分 ↔ 分 <span class="filter-count">0</span></button></div></div>
+        <div class="timeline" id="eventList" role="log" aria-label="本轮事件动态" aria-live="polite" aria-relevant="additions"><div class="empty-events">等待本轮事件…</div></div>
+      </section>
+      <section class="session-runs hidden" id="sessionRuns"><div class="section-label">本次打开期间的任务</div><div id="runHistory"></div></section>
+      <div class="connection-error hidden" id="connectionError" role="alert"></div>
+    </section>
+  </main>
+</div>
+<dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle">
+  <div class="settings-shell">
+    <header class="settings-header"><div><div class="eyebrow">WORKSPACE</div><h2 id="settingsTitle">设置</h2><p>管理派发模式、提供商、模型与 Agent。</p></div><button class="iconbtn" id="closeSettings" type="button" aria-label="关闭设置">×</button></header>
+    <div class="settings-layout">
+      <nav class="settings-nav" aria-label="设置分类" role="tablist">
+        <button class="settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="settingsHub" data-settings-tab="hub">协作设置</button>
+        <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsProviders" data-settings-tab="providers">提供商与模型</button>
+        <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAgents" data-settings-tab="agents">Agent 与子 Agent</button>
+      </nav>
+      <div class="settings-content">
+        <section class="settings-pane active" id="settingsHub" role="tabpanel">
+          <div class="settings-section-intro"><h3>协作默认值</h3><p>选择主 Agent 模式，设置摘要与任务时限。</p></div>
+          <div id="hubSettingsMount"></div>
+        </section>
+        <section class="settings-pane" id="settingsProviders" role="tabpanel" hidden>
+          <div class="settings-section-intro"><div><h3>提供商与模型</h3><p>配置兼容 API 地址和默认模型。密钥只在此处输入，保存后不可读取。</p></div><button class="secondary-button" type="button" id="newProvider">添加提供商</button></div>
+          <div class="settings-list" id="providerList" aria-live="polite"><div class="settings-empty">正在读取配置…</div></div>
+          <form class="editor-card hidden" id="providerEditor" autocomplete="off">
+            <div class="editor-head"><div><span class="eyebrow">PROVIDER</span><h4 id="providerEditorTitle">添加提供商</h4></div><button class="iconbtn" type="button" data-cancel-provider aria-label="关闭">×</button></div>
+            <div class="form-grid">
+              <label class="form-field">标识符<input name="id" required maxlength="32" pattern="[A-Za-z0-9_-]{1,32}" placeholder="my-provider"></label>
+              <label class="form-field">接口协议<select name="protocol" required><option value="openai-chat-completions">OpenAI 兼容（Chat Completions）</option><option value="anthropic-messages">Anthropic Messages</option><option value="ollama-chat">Ollama Chat</option></select></label>
+              <label class="form-field wide">API 地址<input name="base_url" type="url" required placeholder="https://api.example.com/v1"><small class="field-help">填写服务根地址或完整 API 路径；协议会按所选兼容格式请求。</small></label>
+              <label class="form-field check-field wide"><input name="allow_insecure_loopback" type="checkbox"> 允许不加密的本机回环地址（仅限本机 Ollama 等服务）</label>
+              <label class="form-field wide">API 密钥或环境变量引用<div class="secret-input"><input name="api_key" type="password" autocomplete="off" spellcheck="false" placeholder="API 密钥或 ${ENV:OPENAI_API_KEY}；留空则保留已保存值"><button type="button" class="reveal-secret" aria-label="显示输入内容" aria-pressed="false">显示</button></div><small class="field-help" data-secret-state>只作为输入发送；保存后不会回显。当前平台不支持受保护存储时，请使用 ${ENV:VARIABLE_NAME}。</small></label>
+              <label class="form-field check-field wide"><input name="clear_api_key" type="checkbox" disabled> 清除已保存的密钥</label>
+              <label class="form-field wide">默认模型<input name="model" maxlength="120" placeholder="例如：model-name"></label>
+            </div>
+            <div class="editor-actions"><button class="secondary-button" type="button" data-cancel-provider>取消</button><button class="primary-button" type="submit">保存提供商</button></div>
+          </form>
+        </section>
+        <section class="settings-pane" id="settingsAgents" role="tabpanel" hidden>
+          <div class="settings-section-intro"><div><h3>Agent</h3><p>创建普通 Agent。将可负责拆解任务的 Agent 设为主 Agent，或将模型模板加入子 Agent 白名单。</p></div><button class="secondary-button" id="newAgent" type="button">添加 Agent</button></div>
+          <div class="settings-list" id="agentConfigList" aria-live="polite"><div class="settings-empty">正在读取配置…</div></div>
+          <div class="templates-card"><div class="templates-head"><div><h4>主 Agent 可用的子 Agent 模板</h4><p>仅批准的模型模板可由主 Agent 按需创建。每轮结束后子 Agent 不会加入全局列表。</p></div><button class="secondary-button" id="newTemplate" type="button">添加模板</button></div><div id="templateList" class="template-list"></div><div class="template-scope">子 Agent 仅在当前任务轮次内可见</div></div>
+          <form class="editor-card hidden" id="agentEditor" autocomplete="off">
+            <div class="editor-head"><div><span class="eyebrow">AGENT</span><h4 id="agentEditorTitle">添加 Agent</h4></div><button class="iconbtn" type="button" data-cancel-agent aria-label="关闭">×</button></div>
+            <div class="form-grid">
+              <label class="form-field">Agent 标识符<input name="id" required maxlength="32" pattern="[A-Za-z0-9_-]{1,32}" placeholder="researcher"></label>
+              <label class="form-field">显示名称<input name="desc" required maxlength="120" placeholder="研究 Agent"></label>
+              <label class="form-field">提供商<select name="provider_id" required><option value="">先添加提供商</option></select></label>
+              <label class="form-field">模型<input name="model" required maxlength="120" placeholder="model-name"><small class="field-help">填写提供商支持的模型标识。</small></label>
+              <label class="form-field">超时（秒）<input name="timeout" type="number" min="1" max="86400" value="600" required></label>
+            </div>
+            <div class="editor-actions"><button class="secondary-button" type="button" data-cancel-agent>取消</button><button class="primary-button" type="submit">保存 Agent</button></div>
+          </form>
+          <form class="editor-card hidden" id="templateEditor" autocomplete="off">
+            <div class="editor-head"><div><span class="eyebrow">CHILD AGENT TEMPLATE</span><h4 id="templateEditorTitle">添加子 Agent 模板</h4></div><button class="iconbtn" type="button" data-cancel-template aria-label="关闭">×</button></div>
+            <div class="form-grid">
+              <label class="form-field">模板标识符<input name="id" required maxlength="32" pattern="[A-Za-z0-9_-]{1,32}" placeholder="reviewer"></label>
+              <label class="form-field">显示名称<input name="desc" required maxlength="120" placeholder="Reviewer"></label>
+              <label class="form-field">提供商<select name="provider_id" required><option value="">选择提供商</option></select></label>
+              <label class="form-field">模型<input name="model" required maxlength="120" placeholder="model-name"><small class="field-help">填写此子 Agent 模板要使用的模型标识。</small></label>
+              <label class="form-field check-field"><input name="enabled" type="checkbox" checked> 启用并加入批准列表</label>
+            </div>
+            <div class="editor-actions"><button class="secondary-button" type="button" data-cancel-template>取消</button><button class="primary-button" type="submit">保存模板</button></div>
+          </form>
+        </section>
+      </div>
+    </div>
+  </div>
+</dialog>
+<div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+<dialog id="responseDialog" class="response-dialog"><form method="dialog"><div class="dialog-head"><h2 id="responseTitle">Agent 原始回复</h2><button class="iconbtn" aria-label="关闭">×</button></div><pre id="responseText"></pre><button class="save-config" value="close">关闭</button></form></dialog>
+<script src="/web/status.js" defer></script>
+<script src="/web/deadline.js" defer></script>
+<script src="/web/app.js" defer></script>
+</body>
+</html>

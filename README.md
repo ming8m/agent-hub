@@ -1,0 +1,93 @@
+# Agent Hub
+
+A local, single-user Agent Hub for direct and orchestrated runs across configured providers and command-line agents. The application uses Python's standard library. Running a command-line agent requires its CLI to be installed and configured by you.
+
+## Quick start (Windows)
+
+The bundled `win_dpapi.py` implementation uses Windows DPAPI for the current user. The source targets Python 3.8 or newer; the optional desktop viewer also requires Tkinter. Runtime verification has been performed on Windows with Python 3.10. Python 3.8/3.9 and non-Windows environments have not yet been runtime-tested.
+
+```powershell
+$env:AGENT_COMM_HOME = Join-Path $env:APPDATA 'AgentCommBus'
+New-Item -ItemType Directory -Force $env:AGENT_COMM_HOME | Out-Null
+python .\server.py
+```
+
+Open the local page, then use **Settings** to add a provider, agent, and (optionally) approved child-agent templates. Start with **Direct** mode for parallel workers. Configure an orchestrator and choose **Orchestrated** mode to delegate a plan. A provider can use any model identifier accepted by its selected protocol endpoint. No provider key is needed for local loopback services. On Windows, raw provider credentials use DPAPI storage; on other platforms, use an `${ENV:VARIABLE_NAME}` reference and set that variable in the server process environment.
+
+`AGENT_COMM_HOME` is read by `bus.py`, `auth.py`, and the viewer. Its default is `%APPDATA%\AgentCommBus` on Windows, `$XDG_DATA_HOME/AgentCommBus` where `XDG_DATA_HOME` is set, or `~/.local/share/AgentCommBus` otherwise. Runtime files are kept outside the source tree.
+
+## Optional CLI agent setup
+
+Copy `agents.example.json` to `AGENT_COMM_HOME\agents.json`, or register an agent with a JSON argv array:
+
+```powershell
+Copy-Item .\agents.example.json (Join-Path $env:AGENT_COMM_HOME 'agents.json')
+python .\bus.py register echo '["python","-c","print(2)"]'
+python .\bus.py list
+python .\bus.py run echo "hello"
+```
+
+The equivalent configuration entry is `{"echo":{"command":["python","-c","print(2)"],"desc":"Example CLI","timeout":600}}`. `command` must be a non-empty list of strings. `{prompt}` is replaced within an individual argument; without that placeholder, the task is sent as UTF-8 on stdin. `timeout` is an optional positive number of seconds (default 600). `env` is an optional mapping applied to the child process. On Windows, raw credential fields in `env` are DPAPI-protected in saved JSON and decrypted only in memory. On all platforms, `${ENV:VARIABLE_NAME}` references are supported for credential fields; raw secret values are rejected on platforms without DPAPI. Shell execution is disabled.
+
+## Commands
+
+```text
+python bus.py list
+python bus.py run echo "summarize this"
+python bus.py send user echo "queued message"
+python bus.py broadcast user "queued message"
+python bus.py relay echo reviewer "review this"
+python bus.py chat
+python bus.py view
+python bus.py gate <case-directory-or-blackboard.json>
+```
+
+CLI `send` and `broadcast` only append messages to inbox queues; they do not start recipients. CLI broadcast excludes the sender. WebUI chat/broadcast starts the selected agent or all configured agents, including the sender if it is configured; its API `started` field means background execution has begun, not that a durable queue accepted the task. A task message is free text: the tool does not create or validate a structured case ID, owner, absolute case path, output path, or acceptance criteria. Include those fields in your message when your workflow requires them. `run` and `relay` return nonzero when execution fails. Successful execution does not mean an external completion gate passed.
+
+## Start and stop the Windows WebUI
+
+From the candidate directory, in the same PowerShell session where `AGENT_COMM_HOME` is set, run:
+
+```powershell
+python .\server.py
+```
+
+The server opens the browser and listens only on `127.0.0.1`. Keep this terminal open while using the WebUI; press **Ctrl+C** in that terminal to stop the server. On Windows, the WebUI token is stored under `AGENT_COMM_HOME` and protected at rest with the bundled Windows DPAPI implementation for the current user. On other platforms, a process-session token is generated in memory and is not written to disk; it becomes invalid when the server process stops. Runtime behavior outside Windows has not yet been verified.
+
+## Agent Hub
+
+The browser UI is the Agent Hub. Use its provider settings to configure agents, provider templates, and approved child-agent templates. Use **Direct** mode to select workers for a parallel run or **Orchestrated** mode to use the configured orchestrator. The mode and worker selection on the run form apply to the current run.
+
+With an orchestrator selected, **auto** dispatches a validated plan immediately. **preview** displays the plan, questions, proposed agent templates, and tasks, then waits for approval. The orchestrator may create run-scoped children only from templates that a user has approved; its output cannot introduce provider URLs, models, credentials, commands, or environment settings. Limits on tasks, child agents, message count, and depth bound fan-out. Direct runs start the selected workers. Summary agents can be configured independently.
+
+Providers use explicit protocol adapters: `openai-chat-completions` (OpenAI-compatible Chat Completions), `anthropic-messages` (Anthropic Messages), or `ollama-chat` (Ollama chat). These adapters use distinct request and response formats; they do not claim compatibility with arbitrary APIs. `base_url` may be an origin, a version/prefix path, or that adapter's exact endpoint (`/v1/chat/completions`, `/v1/messages`, or `/api/chat`); endpoint suffixes are added where needed. Each agent or template uses an exact, user-configured model identifier. The OpenAI-compatible adapter uses Bearer API-key auth; Anthropic uses `x-api-key` and its version header; remote Ollama uses Bearer auth, while local loopback Ollama does not send a key. HTTP is allowed only for a loopback URL when explicitly enabled, for local development/model servers. URLs must not contain credentials, query parameters, or fragments; redirects are not followed. API keys are protected at rest on Windows, and the UI only reports whether a key is configured.
+
+Agents can return a final answer and requested messages/tasks through the structured `AGENT_HUB_RESULT` protocol. The Hub delivers these messages after the producing request finishes; they are not live streaming messages. The event view can filter orchestrator-to-worker and worker-to-worker relationships, as well as show all events. Each task can display a concise summary, and the original full response can be opened on demand.
+
+The run deadline is used to mark a run or task as late; it does not terminate an executing CLI process. Execution can finish after the deadline and its late response is retained and displayed with its final state.
+
+Agent Hub run state, events, summaries, and full responses are stored under `AGENT_COMM_HOME` in the Hub runtime data. This data is separate from the source tree and is not browser session storage. The Hub's clear-log action clears only `log/chat.log`; it does not delete run history, inboxes, or saved full responses. Remove the runtime directory yourself when you intend to discard all local Hub data.
+
+## Secure storage and platform support
+
+On Windows, raw agent secret values and the WebUI token use this repository's standalone `win_dpapi.py` adapter; it does not depend on the local workspace's private `shared/secrets.py` package. DPAPI output is stored as `dpapi:<standard-base64-ciphertext>` using the current user's DPAPI scope; the adapter does not set `CRYPTPROTECT_LOCAL_MACHINE`. DPAPI usually binds data to the same Windows user and computer, with roaming profile exceptions. Windows ACL tightening on the token file is an additional measure.
+
+Off Windows, the WebUI uses an in-memory token scoped to the server process; it is not saved to disk. Raw secret values cannot be persisted by CLI or provider configuration, but `${ENV:VARIABLE_NAME}` references are stored as references and resolved from the server or CLI process environment at runtime. Those platform paths are documented from code inspection and have not yet been runtime-tested.
+
+The built-in field-name heuristic protects string values under names containing separated words such as `key`, `token`, `secret`, `password`, `passwd`, or `credential`, and common compact names such as `APIKey`, `accessToken`, `clientSecret`, `privateKey`, and `authToken`. A custom field name with no such marker is outside automatic detection; place secrets under a clearly named field such as `env.API_KEY`.
+
+## WebUI and data
+
+The WebUI binds only to `127.0.0.1`, requires `X-Agent-Bus-Token` on API requests, rejects disallowed Origin and cross-site fetches and OPTIONS, limits JSON POST bodies to 1 MiB, and requires boolean `confirm: true` to clear the main log. Windows stores the token with DPAPI; other platforms keep it only in server-process memory. Do not expose the service through a proxy or public network. `clear` removes `log/chat.log`; inbox files and full responses remain.
+
+Data is stored under `AGENT_COMM_HOME`: `agents.json`, `log/chat.log`, `log/responses/`, and `inbox/`. Treat this directory as private. Do not check it into source control.
+
+## Optional completion gate
+
+`AGENT_COMM_GATE_MODULE` may name a trusted importable module exporting `full_health_check(path=...)`. The argument is the absolute path to `blackboard.json`; when the CLI argument is a directory, `bus.py` appends that filename. The function returns a mapping whose values expose boolean `passed` and iterable `failures` and `warnings` attributes. Any failed check, missing provider, malformed return, or provider exception returns nonzero. A zero exit status means every returned check passed; it does not replace the provider's own policy review.
+
+This project is licensed under the MIT License; see [`LICENSE`](LICENSE) for the full terms. The license applies to this candidate project’s original material. Third-party material remains subject to its own rights and license terms; this attribution does not claim ownership of that material.
+
+## Attribution
+
+Copyright (c) 2026 ming. This is the attribution for this candidate as identified by its maintainer. It does not claim ownership of third-party material or settle any third-party rights or license obligations.
