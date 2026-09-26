@@ -15,20 +15,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import auth
 import bus
 import server
+import win_dpapi
 
 
 class OfflineSecurityTests(unittest.TestCase):
-    def test_full_response_button_passes_stable_id_without_js_path_escapes(self):
-        self.assertIn('data-id="${esc(e.id||\'\')}" onclick="showFull(this.dataset.id)"', server.PAGE)
-        self.assertIn("encodeURIComponent(rid)", server.PAGE)
-        self.assertNotIn("showFull('${e.full}')", server.PAGE)
-
-    def test_full_response_uses_in_page_dialog_after_fetch_not_popup(self):
-        self.assertIn('<dialog id="full-dialog"', server.PAGE)
-        self.assertIn('fullText.textContent=d.text', server.PAGE)
-        self.assertIn('fullDialog.showModal()', server.PAGE)
-        self.assertIn("$('#full-close').onclick=()=>fullDialog.close()", server.PAGE)
-        self.assertNotIn('window.open(', server.PAGE)
+    def test_real_frontend_uses_authenticated_response_dialog(self):
+        app = (Path(server.WEB_DIR) / "app.js").read_text(encoding="utf-8")
+        page = (Path(server.WEB_DIR) / "index.html").read_text(encoding="utf-8")
+        self.assertIn("/api/responses/${encodeURIComponent(task.response_id)}", app)
+        self.assertIn("$('#responseText').textContent = result.text ?? ''", app)
+        self.assertIn("$('#responseDialog').showModal()", app)
+        self.assertIn('id="responseDialog"', page)
+        self.assertNotIn("__BUS_TOKEN__", page)
 
     def test_full_response_endpoint_returns_fixture_text_for_stable_id(self):
         token='synthetic-full-response-token'
@@ -114,6 +112,37 @@ class OfflineSecurityTests(unittest.TestCase):
                     self.assertRegex(token, r"^[0-9a-f]{64}$")
                     self.assertEqual(token, auth.get_or_create_token())
                     self.assertFalse(token_file.exists())
+
+    def test_secret_containers_cannot_persist_synthetic_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(bus, "AGENTS_FILE", str(Path(tmp) / "agents.json")):
+            path = Path(bus.AGENTS_FILE)
+            bus.save_agents({"demo": {"command": ["echo"], "env": {"API_KEY": "${ENV:SYNTHETIC_KEY}"}}})
+            baseline = path.read_bytes()
+            for value in ("sk-" + "A" * 24, "q" + "8" * 31):
+                for wrapped in ([value], {"value": value}):
+                    with self.assertRaises(ValueError):
+                        bus.save_agents({"demo": {"command": ["echo"], "env": {"API_KEY": wrapped}}})
+                    self.assertEqual(baseline, path.read_bytes())
+                    self.assertNotIn(value.encode(), path.read_bytes())
+            with self.assertRaises(RuntimeError):
+                bus.unprotect_config_tree({"API_KEY": ["synthetic"]})
+            path.write_text(json.dumps({"demo": {"env": {"API_KEY": ["synthetic"]}}}), encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                bus.load_agents()
+
+    def test_output_limit_integer_only_exception_and_standalone_secret_tree(self):
+        self.assertEqual({"max_tokens": 4096}, bus.protect_config_tree({"max_tokens": 4096}))
+        self.assertEqual({"max_tokens": 4096}, win_dpapi.protect_tree({"max_tokens": 4096}))
+        for bad in (["q" + "8" * 31], {"value": "q" + "8" * 31}, 0, True):
+            with self.assertRaises(ValueError):
+                bus.protect_config_tree({"max_tokens": bad})
+            with self.assertRaises(ValueError):
+                win_dpapi.protect_tree({"max_tokens": bad})
+        for tree in ({"API_KEY": ["synthetic"]}, {"API_KEY": {"value": "synthetic"}}):
+            with self.assertRaises(ValueError):
+                win_dpapi.protect_tree(tree)
+            with self.assertRaises(ValueError):
+                win_dpapi.unprotect_tree(tree)
 
     @unittest.skipIf(os.name == "nt", "Windows uses a stable DPAPI-protected token")
     def test_session_token_is_thread_safe_and_never_written(self):
@@ -333,7 +362,7 @@ class OfflineSecurityTests(unittest.TestCase):
                 self.assertNotIn(synthetic_token,bad_body)
                 page_status,page=get("/",f"127.0.0.1:{port}")
                 self.assertEqual(200,page_status)
-                self.assertIn(synthetic_token,page)
+                self.assertNotIn(synthetic_token,page)
                 api_bad_status,api_bad_body=get("/api/state",f"attacker.invalid:{port}",token=synthetic_token)
                 self.assertEqual(403,api_bad_status)
                 self.assertNotIn(synthetic_token,api_bad_body)

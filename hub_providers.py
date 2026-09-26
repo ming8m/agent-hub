@@ -82,10 +82,20 @@ def _endpoint(protocol: str, base_url: str) -> str:
 def _read_limited(response, deadline) -> bytes:
     size = 0
     chunks = []
+    reader = getattr(response, "read1", response.read)
+    # HTTPResponse.read(n) may wait for all n bytes while a peer trickles data.
+    # read1 returns available bytes; update the socket timeout for each read so
+    # a later stall cannot restart the full request timeout.
+    socket_obj = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
     while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ProviderError("Provider request timed out")
+        if socket_obj is not None:
+            socket_obj.settimeout(remaining)
+        chunk = reader(min(65536, MAX_RESPONSE_BYTES + 1 - size))
         if time.monotonic() >= deadline:
             raise ProviderError("Provider request timed out")
-        chunk = response.read(min(65536, MAX_RESPONSE_BYTES + 1 - size))
         if not chunk:
             return b"".join(chunks)
         chunks.append(chunk)
@@ -125,24 +135,32 @@ def complete(agent: dict, prompt: str, timeout=None) -> str:
     timeout = agent.get("timeout", 600) if timeout is None else timeout
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= _MAX_TIMEOUT:
         raise ProviderError("Provider timeout is out of range")
+    max_tokens = agent.get("max_tokens", 4096)
+    if type(max_tokens) is not int or not 1 <= max_tokens <= 100_000:
+        raise ProviderError("Provider max_tokens is out of range")
 
     api_key = provider.get("api_key")
     if api_key is not None and (not isinstance(api_key, str) or any(ord(ch) < 32 or ord(ch) == 127 for ch in api_key)):
         raise ProviderError("Provider credential is invalid")
     if protocol == "openai-chat-completions":
+        output_limit_field = provider.get("output_limit_field", "max_tokens")
+        if not isinstance(output_limit_field, str) or output_limit_field not in {"max_tokens", "max_completion_tokens"}:
+            raise ProviderError("Provider output_limit_field is invalid")
         payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False}
+        payload[output_limit_field] = max_tokens
         if api_key:
             headers = {"Authorization": "Bearer " + api_key}
         else:
             headers = {}
     elif protocol == "anthropic-messages":
-        payload = {"model": model, "max_tokens": int(agent.get("max_tokens", 4096)),
+        payload = {"model": model, "max_tokens": max_tokens,
                    "messages": [{"role": "user", "content": prompt}], "stream": False}
         headers = {"anthropic-version": "2023-06-01"}
         if api_key:
             headers["x-api-key"] = api_key
     else:
         payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False}
+        payload["options"] = {"num_predict": max_tokens}
         headers = {}
         # Ollama's hosted API uses Bearer auth; local Ollama does not need it.
         if api_key and not _loopback(urllib.parse.urlsplit(base_url).hostname):
@@ -150,7 +168,6 @@ def complete(agent: dict, prompt: str, timeout=None) -> str:
     headers.update({"Content-Type": "application/json", "Accept": "application/json"})
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     request = urllib.request.Request(_endpoint(protocol, base_url), data=data, headers=headers, method="POST")
-    opener = urllib.request.build_opener(_NoRedirect())
     deadline = time.monotonic() + float(timeout)
     try:
         parsed_url = urllib.parse.urlsplit(base_url)
@@ -159,15 +176,11 @@ def complete(agent: dict, prompt: str, timeout=None) -> str:
         with opener.open(request, timeout=float(timeout)) as response:
             body = _read_limited(response, deadline)
     except urllib.error.HTTPError as exc:
-        # Drain a bounded amount to release the connection; provider response
-        # text can contain private request details so it is never surfaced.
-        try:
-            exc.read(4096)
-        except OSError:
-            pass
         code = exc.code
         exc.close()
         raise ProviderError(f"Provider returned HTTP {code}") from None
+    except (TimeoutError, socket.timeout):
+        raise ProviderError("Provider request timed out") from None
     except (urllib.error.URLError, TimeoutError, socket.timeout, ssl.SSLError, OSError) as exc:
         if isinstance(exc, urllib.error.HTTPError):
             raise ProviderError(f"Provider returned HTTP {exc.code}") from None

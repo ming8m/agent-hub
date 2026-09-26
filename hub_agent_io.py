@@ -2,7 +2,8 @@
 
 The adapter never starts a process or dispatches work. Callers provide trusted
 task identity and pass the returned envelopes to ``AgentHub.validate_envelope``.
-Structured output is opt-in and starts with the exact ``AGENT_HUB_RESULT`` line;
+Structured output is opt-in and uses an unfenced ``AGENT_HUB_RESULT`` line
+followed by JSON at the end of stdout. A leading legacy block remains valid;
 all other stdout remains an ordinary final answer.
 """
 from __future__ import annotations
@@ -56,7 +57,8 @@ def build_cli_prompt(task_prompt: str) -> str:
         "Use only recipient, task, body, and execute in each message. recipient is a registered agent ID; "
         "task is optional and supplies the child task prompt when execute is true; body is required text; "
         "execute must be true to request a child task and false to record a message only. Put the user-facing "
-        "answer in final_answer. The Hub supplies all identity, relationship, timestamp, and message ID fields. "
+        "answer in final_answer. Start the block after a blank line and put no text after its JSON. "
+        "The Hub supplies all identity, relationship, timestamp, and message ID fields. "
         "If you have no messages, return ordinary plain text as your final answer."
     )
 
@@ -78,12 +80,29 @@ def parse_cli_output(stdout: str, registered_agent_ids: Sequence[str] | Mapping[
         raise AgentIOError("max_depth is out of range")
     if type(depth) is not int or depth < 0 or depth > max_depth:
         raise AgentIOError("task depth is out of range")
-    marker_prefix = next((prefix for prefix in (RESULT_MARKER + "\n", RESULT_MARKER + "\r\n")
-                          if stdout.startswith(prefix)), None)
-    if marker_prefix is None:
+    lines = stdout.splitlines(keepends=True)
+    candidates = []
+    offset = 0
+    fence = None
+    for index, line in enumerate(lines):
+        stripped = line.rstrip("\r\n")
+        fence_match = re.match(r"^ {0,3}(`{3,}|~{3,})", stripped)
+        if fence_match:
+            run = fence_match.group(1)
+            if fence is None:
+                fence = (run[0], len(run))
+            elif run[0] == fence[0] and len(run) >= fence[1]:
+                fence = None
+        elif fence is None and stripped == RESULT_MARKER and line.endswith("\n"):
+            candidates.append(offset + len(line))
+        offset += len(line)
+    if len(candidates) > 1:
+        raise AgentIOError("multiple structured result blocks")
+    if not candidates:
         return {"final_answer": stdout, "messages": [], "structured": False}
-
-    raw = stdout[len(marker_prefix):]
+    raw = stdout[candidates[0]:]
+    if not raw.lstrip().startswith("{"):
+        raise AgentIOError("structured result must be a JSON object")
     if _byte_size(raw) > MAX_OUTPUT_BYTES:
         raise AgentIOError("structured result exceeds the output byte limit")
     try:

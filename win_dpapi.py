@@ -107,12 +107,20 @@ def _is_secret_field(name):
                  "privatekey", "authtoken"})
 
 
+def _is_output_limit(key, value):
+    return key == "max_tokens" and type(value) is int and 1 <= value <= 100000
+
+
 def protect_tree(value):
     """Return a JSON-compatible copy, DPAPI-protecting string values in secret fields."""
     if isinstance(value, dict):
         result = {}
         for key, item in value.items():
-            if _is_secret_field(key) and isinstance(item, str):
+            if _is_output_limit(key, item):
+                result[key] = item
+            elif _is_secret_field(key):
+                if not isinstance(item, str):
+                    raise ValueError("Secret fields must be strings")
                 result[key] = item if is_env_reference(item) else protect_text(item)
             else:
                 result[key] = protect_tree(item)
@@ -127,7 +135,11 @@ def unprotect_tree(value):
     if isinstance(value, dict):
         result = {}
         for key, item in value.items():
-            if _is_secret_field(key) and isinstance(item, str):
+            if _is_output_limit(key, item):
+                result[key] = item
+            elif _is_secret_field(key):
+                if not isinstance(item, str):
+                    raise ValueError("Stored secret fields must be strings")
                 if is_env_reference(item):
                     result[key] = item
                     continue

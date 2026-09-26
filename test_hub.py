@@ -49,12 +49,12 @@ class HubTests(unittest.TestCase):
         else:
             import subprocess
             acl = subprocess.run(["icacls.exe", str(root)], check=True,
-                capture_output=True, text=True).stdout
+                capture_output=True).stdout
             # icacls resolves the SID to its localized account name for display.
-            self.assertIn("(OI)(CI)(F)", acl)
-            self.assertNotIn("Everyone", acl)
-            self.assertIn("(F)", subprocess.run(["icacls.exe", str(root / ".hub.lock")],
-                check=True, capture_output=True, text=True).stdout)
+            self.assertIn(b"(OI)(CI)(F)", acl)
+            self.assertNotIn(b"Everyone", acl)
+            self.assertIn(b"(F)", subprocess.run(["icacls.exe", str(root / ".hub.lock")],
+                check=True, capture_output=True).stdout)
 
     def wait_until(self, predicate, timeout=5):
         deadline = time.monotonic() + timeout

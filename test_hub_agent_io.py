@@ -36,6 +36,33 @@ class AgentIOTests(unittest.TestCase):
         self.assertTrue(parsed["structured"])
         self.assertEqual("beta", parsed["messages"][0]["recipient"])
 
+    def test_appended_block_after_plain_answer_is_parsed(self):
+        value = {"final_answer": "Done", "messages": [
+            {"recipient": "beta", "body": "Review finding", "execute": False},
+        ]}
+        raw = "Here is the result.\n\n" + self.marked(value)
+        parsed = io.parse_cli_output(raw, ["alpha", "beta"])
+        self.assertTrue(parsed["structured"])
+        self.assertEqual("Done", parsed["final_answer"])
+        self.assertEqual("beta", parsed["messages"][0]["recipient"])
+
+    def test_appended_malformed_or_multiple_blocks_are_errors(self):
+        block = self.marked({"final_answer": "Done", "messages": []})
+        for raw in ("Answer\n\nAGENT_HUB_RESULT\n{bad}", block + "\n\n" + block,
+                    block + "\ntrailing prose"):
+            with self.subTest(raw=raw), self.assertRaises(io.AgentIOError):
+                io.parse_cli_output(raw, ["alpha"])
+
+    def test_fenced_and_discussed_marker_stays_plain_text(self):
+        block = self.marked({"final_answer": "Done", "messages": [
+            {"recipient": "beta", "body": "do not send", "execute": False},
+        ]})
+        for raw in ("Example:\n```text\n" + block + "\n```",
+                    "I saw AGENT_HUB_RESULT in a log.",
+                    "The protocol uses `AGENT_HUB_RESULT` as a marker."):
+            with self.subTest(raw=raw):
+                self.assertEqual([], io.parse_cli_output(raw, ["alpha", "beta"])["messages"])
+
     def test_parses_structured_reply_and_builds_identity_from_context(self):
         parsed = io.parse_cli_output(self.marked({
             "final_answer": "Done",

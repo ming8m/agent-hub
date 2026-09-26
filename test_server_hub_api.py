@@ -113,7 +113,7 @@ class HubApiTests(unittest.TestCase):
         webroot = Path(self.temp.name) / "web"
         webroot.mkdir()
         (webroot / "index.html").write_text(
-            '<meta name="agent-bus-token" content="__BUS_TOKEN__"><link href="/web/style.css">'
+            '<link href="/web/style.css">'
             '<script src="/web/status.js"></script><script src="/web/deadline.js"></script>'
             '<script src="/web/app.js"></script>',
             encoding="utf-8")
@@ -126,12 +126,15 @@ class HubApiTests(unittest.TestCase):
             status, mime, cache_control, body = self.request_raw("/")
             self.assertEqual((200, "text/html; charset=utf-8"), (status, mime))
             self.assertEqual("no-store", cache_control)
-            self.assertIn(f'content="{secret}"'.encode(), body)
-            self.assertNotIn(b"__BUS_TOKEN__", body)
+            self.assertNotIn(secret.encode(), body)
             status, mime, _, body = self.request_raw("/index.html")
             self.assertEqual((200, "text/html; charset=utf-8"), (status, mime))
             self.assertIn(b"/web/status.js", body)
             self.assertIn(b"/web/deadline.js", body)
+            self.assertNotIn(secret.encode(), body)
+            status, _, _, body = self.request_raw("/api/state")
+            self.assertEqual(401, status)
+            self.assertNotIn(secret.encode(), body)
             for path, expected in (
                     ("/web/style.css", ("text/css; charset=utf-8", b"color: black")),
                     ("/web/status.js", ("application/javascript; charset=utf-8", b"AgentHubTaskStatus")),
@@ -140,6 +143,7 @@ class HubApiTests(unittest.TestCase):
                 status, mime, _, body = self.request_raw(path)
                 self.assertEqual((200, expected[0]), (status, mime), path)
                 self.assertIn(expected[1], body, path)
+                self.assertNotIn(secret.encode(), body, path)
             for path in ("/web/secret.txt", "/web/../index.html"):
                 status, _, _, body = self.request_raw(path)
                 self.assertEqual(404, status)
@@ -154,8 +158,28 @@ class HubApiTests(unittest.TestCase):
                 self.assertNotIn(secret.encode(), body)
         with patch.object(server, "WEB_DIR", str(webroot)), patch.object(server, "TOKEN", '" onfocus="x'):
             status, _, _, body = self.request_raw("/")
-            self.assertEqual(503, status)
+            self.assertEqual(200, status)
             self.assertNotIn(b'onfocus="x', body)
+
+    def test_mixed_provider_registry_preserves_output_limits_on_save(self):
+        payload = {"providers": [
+            {"id": "openai", "protocol": "openai-chat-completions", "base_url": "https://example.invalid/v1", "output_limit_field": "max_completion_tokens"},
+            {"id": "anthropic", "protocol": "anthropic-messages", "base_url": "https://example.invalid/v1"},
+            {"id": "ollama", "protocol": "ollama-chat", "base_url": "https://example.invalid"}],
+            "provider_agents": [{"id": "api_agent", "desc": "Synthetic", "provider_id": "openai", "model": "synthetic-model", "timeout": 30, "max_tokens": 8192}],
+            "templates": [{"id": "child", "desc": "Synthetic", "provider_id": "anthropic", "model": "synthetic-model", "enabled": True, "max_tokens": 2048}],
+            "approved_template_ids": ["child"]}
+        status, _ = self.request("PUT", "/api/config/agents", payload)
+        self.assertEqual(200, status)
+        status, loaded = self.request("GET", "/api/config/agents")
+        self.assertEqual(200, status)
+        self.assertEqual(8192, loaded["provider_agents"][0]["max_tokens"])
+        self.assertEqual(2048, loaded["templates"][0]["max_tokens"])
+        self.assertEqual("max_completion_tokens", loaded["providers"][0]["output_limit_field"])
+        self.assertNotIn("output_limit_field", loaded["providers"][1])
+        self.assertNotIn("output_limit_field", loaded["providers"][2])
+        status, _ = self.request("PUT", "/api/config/agents", payload)
+        self.assertEqual(200, status)
 
     def test_compact_state_skips_large_or_damaged_legacy_log(self):
         log = Path(self.temp.name) / "chat.log"

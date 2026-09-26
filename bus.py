@@ -78,6 +78,9 @@ def _is_secret_field(name):
                 {"apikey", "accesstoken", "refreshtoken", "clientsecret",
                  "privatekey", "authtoken"})
 
+def _is_output_limit(key, value):
+    return key == "max_tokens" and type(value) is int and 1 <= value <= 100000
+
 def _require_secrets():
     global _sec
     if _sec is None:
@@ -111,7 +114,12 @@ def protect_config_tree(value):
     if isinstance(value, dict):
         result = {}
         for key, item in value.items():
-            if _is_secret_field(key) and isinstance(item, str):
+            if _is_output_limit(key, item):
+                result[key] = item
+                continue
+            if _is_secret_field(key):
+                if not isinstance(item, str):
+                    raise ValueError("Secret fields must be strings")
                 if _is_env_reference(item):
                     result[key] = item
                 elif os.name != "nt":
@@ -132,7 +140,12 @@ def unprotect_config_tree(value, *, resolve_env=False):
     if isinstance(value, dict):
         result = {}
         for key, item in value.items():
-            if _is_secret_field(key) and isinstance(item, str):
+            if _is_output_limit(key, item):
+                result[key] = item
+                continue
+            if _is_secret_field(key):
+                if not isinstance(item, str):
+                    raise RuntimeError("Stored secret fields must be strings")
                 if _is_env_reference(item):
                     if resolve_env:
                         name = _ENV_REFERENCE_RE.fullmatch(item).group(1)
@@ -211,10 +224,11 @@ def _known_redaction_secrets(extra_secrets=()):
     values.update(_configured_secret_values())
     return values
 
-def redact_sensitive_text(value, extra_secrets=()):
+def redact_sensitive_text(value, extra_secrets=(), *, _known=None):
     """Redact supplied secret values and common credential forms from text."""
     text = str(value)
-    for secret in sorted(_known_redaction_secrets(extra_secrets), key=len, reverse=True):
+    known = _known if _known is not None else _known_redaction_secrets(extra_secrets)
+    for secret in sorted(known, key=len, reverse=True):
         variants = {
             secret,
             quote(secret, safe=""),
@@ -237,17 +251,19 @@ def redact_sensitive_text(value, extra_secrets=()):
             text = pattern.sub("[REDACTED]", text)
     return text
 
-def redact_sensitive_data(value, extra_secrets=()):
+def redact_sensitive_data(value, extra_secrets=(), *, _known=None):
     """Redact string values recursively before JSON encoding."""
+    if _known is None:
+        _known = _known_redaction_secrets(extra_secrets)
     if isinstance(value, str):
-        return redact_sensitive_text(value, extra_secrets)
+        return redact_sensitive_text(value, _known=_known)
     if isinstance(value, dict):
-        return {key: redact_sensitive_data(item, extra_secrets)
+        return {key: redact_sensitive_data(item, _known=_known)
                 for key, item in value.items()}
     if isinstance(value, list):
-        return [redact_sensitive_data(item, extra_secrets) for item in value]
+        return [redact_sensitive_data(item, _known=_known) for item in value]
     if isinstance(value, tuple):
-        return tuple(redact_sensitive_data(item, extra_secrets) for item in value)
+        return tuple(redact_sensitive_data(item, _known=_known) for item in value)
     return value
 
 def _redact_json(value, extra_secrets=()):
@@ -256,7 +272,11 @@ def _redact_json(value, extra_secrets=()):
 def _validate_stored_secret_fields(value):
     if isinstance(value, dict):
         for key, item in value.items():
-            if _is_secret_field(key) and isinstance(item, str):
+            if _is_output_limit(key, item):
+                continue
+            if _is_secret_field(key):
+                if not isinstance(item, str):
+                    raise RuntimeError("Stored secret fields must be strings")
                 if _is_env_reference(item):
                     continue
                 if not _valid_dpapi_shape(item):
@@ -299,7 +319,12 @@ def _protect_existing_config_tree(value):
     if isinstance(value, dict):
         result = {}
         for key, item in value.items():
-            if _is_secret_field(key) and isinstance(item, str):
+            if _is_output_limit(key, item):
+                result[key] = item
+                continue
+            if _is_secret_field(key):
+                if not isinstance(item, str):
+                    raise ValueError("Secret fields must be strings")
                 if _is_env_reference(item):
                     result[key] = item
                 elif _valid_dpapi_shape(item):
@@ -1105,7 +1130,7 @@ def cmd_token():
     """打印 Windows WebUI 令牌；elsewhere the token is process-session only."""
     import auth
     if os.name != "nt":
-        print("非 Windows WebUI 使用进程内会话令牌；请从本地 WebUI 页面使用，CLI 不读取或保存该令牌。")
+        print("非 Windows WebUI 使用服务器进程内会话令牌；请使用服务器启动控制台打印的本地链接。CLI 不读取或保存该令牌。")
         return 1
     token = auth.get_or_create_token()
     print(f"访问令牌: {token}")

@@ -10,13 +10,13 @@ WebUI broadcast starts each configured agent asynchronously.
   python server.py            # 启动并自动打开浏览器
   python bus.py chat          # 同上（推荐入口）
 """
-import html, json, os, sys, threading, webbrowser
+import json, os, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qs
 import re
 
 import bus  # 复用总线的全部逻辑（日志、收件箱、run_agent）
-import auth  # 本机令牌：只有本机当前用户能拿到
+import auth  # DPAPI protects the token at rest; loopback alone is not client identity.
 import hub
 import hub_providers
 
@@ -297,25 +297,20 @@ class Handler(BaseHTTPRequestHandler):
         parsed_url = urlsplit(self.path)
         path = parsed_url.path
         if path in ("/", "/index.html") and not parsed_url.query:
-            # Token-bearing page is served only to this loopback listener's Host and origin.
+            # The public page never contains the API token.
             if not self._client_ok():
                 return self._send(403, '{"ok":false,"error":"loopback only"}')
             if not self._host_ok():
                 return self._send(403, '{"ok":false,"error":"invalid Host"}')
             if not self._origin_ok():
                 return self._send(403, '{"ok":false,"error":"cross-origin rejected"}')
-            if not isinstance(TOKEN, str) or not re.fullmatch(r"[0-9a-f]{64}", TOKEN):
-                return self._send(503, '{"ok":false,"error":"webui token unavailable"}')
             page_path = os.path.join(WEB_DIR, "index.html")
             try:
-                with open(page_path, encoding="utf-8") as stream:
+                with open(page_path, "rb") as stream:
                     page = stream.read()
             except OSError:
                 return self._send(500, '{"ok":false,"error":"webui unavailable"}')
-            if page.count("__BUS_TOKEN__") != 1:
-                return self._send(500, '{"ok":false,"error":"webui unavailable"}')
-            safe_token = html.escape(TOKEN, quote=True)
-            self._send(200, page.replace("__BUS_TOKEN__", safe_token), "text/html; charset=utf-8")
+            self._send(200, page, "text/html; charset=utf-8")
         elif path in STATIC_ASSETS and not parsed_url.query:
             if not self._client_ok():
                 return self._send(403, '{"ok":false,"error":"loopback only"}')
@@ -581,338 +576,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 # ---------------------------------------------------------------- 前端页面
-PAGE = r"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent Comm Bus</title>
-<style>
-  :root{
-    --bg:#050505; --panel:#0b0b0b; --panel2:#121212; --line:#2a2a2a;
-    --text:#f5f5f5; --dim:#8f8f8f; --accent:#ffffff; --accent2:#cfcfcf;
-    --user:#1d1d1d; --ok:#f5f5f5; --fail:#f5f5f5; --chipbg:#101010;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%}
-  body{
-    font-family:"Segoe UI","Microsoft YaHei UI","PingFang SC",system-ui,sans-serif;
-    background:radial-gradient(1200px 700px at 80% -10%, #1a1a1a 0%, var(--bg) 55%);
-    color:var(--text);overflow:hidden;font-size:14px;
-  }
-  #app{display:flex;height:100vh}
-
-  /* ---------- 侧栏 ---------- */
-  #side{
-    width:248px;min-width:248px;background:linear-gradient(180deg,#0a0a0a 0%,#050505 100%);
-    border-right:1px solid var(--line);display:flex;flex-direction:column;
-  }
-  #logo{padding:18px 18px 14px;display:flex;align-items:center;gap:10px}
-  #logo .mark{
-    width:34px;height:34px;border-radius:10px;flex:none;
-    background:linear-gradient(135deg,#ffffff,#c8c8c8);
-    display:flex;align-items:center;justify-content:center;
-    font-weight:700;font-size:15px;color:#000;box-shadow:0 4px 14px rgba(255,255,255,.18);
-  }
-  #logo .t1{font-weight:650;font-size:15px;letter-spacing:.3px}
-  #logo .t2{font-size:11px;color:var(--dim);margin-top:1px}
-  #agents{flex:1;overflow-y:auto;padding:6px 10px 10px}
-  .side-note{font-size:11px;color:var(--dim);padding:8px 10px 4px;letter-spacing:1px}
-  .agent{
-    display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;
-    cursor:pointer;margin-bottom:2px;border:1px solid transparent;transition:.15s;
-  }
-  .agent:hover{background:var(--panel2)}
-  .agent.sel{background:var(--panel2);border-color:#4a4a4a}
-  .ava{
-    width:32px;height:32px;border-radius:50%;flex:none;color:#fff;font-weight:700;
-    display:flex;align-items:center;justify-content:center;font-size:13px;position:relative;
-  }
-  .agent .meta{flex:1;min-width:0}
-  .agent .nm{font-weight:600;font-size:13px;display:flex;gap:6px;align-items:center}
-  .agent .tag{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .dot{width:8px;height:8px;border-radius:50%;background:#e8e8e8;flex:none}
-  .dot.busy{background:#ffffff;animation:pulse 1.1s infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
-  #broadcast{
-    margin:8px 12px;padding:10px 12px;border-radius:10px;cursor:pointer;
-    background:#101010;border:1px dashed #5a5a5a;color:#e8e8e8;font-size:13px;text-align:center;transition:.15s;
-  }
-  #broadcast:hover{border-color:#ffffff;background:#171717}
-  #broadcast.sel{border-style:solid;border-color:#ffffff;background:#1c1c1c}
-  #foot{padding:10px 14px;border-top:1px solid var(--line);color:var(--dim);font-size:11px;line-height:1.7}
-  #foot b{color:#aab6d4}
-
-  /* ---------- 主区 ---------- */
-  #main{flex:1;display:flex;flex-direction:column;min-width:0}
-  #top{
-    height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 18px;
-    border-bottom:1px solid var(--line);background:rgba(13,16,23,.6);backdrop-filter:blur(6px);
-  }
-  #top .title{font-weight:650;font-size:15px}
-  #top .sub{color:var(--dim);font-size:12px}
-  #conn{margin-left:auto;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px}
-  #conn .st{width:8px;height:8px;border-radius:50%;background:var(--ok)}
-  #clearbtn{
-    margin-left:14px;background:none;border:1px solid var(--line);color:var(--dim);
-    padding:5px 12px;border-radius:8px;cursor:pointer;font-size:12px;transition:.15s;
-  }
-  #clearbtn:hover{color:#ffffff;border-color:#ffffff}
-
-  #chat{flex:1;overflow-y:auto;padding:22px 26px 10px;scroll-behavior:smooth}
-  #chat::-webkit-scrollbar,#agents::-webkit-scrollbar{width:8px}
-  #chat::-webkit-scrollbar-thumb,#agents::-webkit-scrollbar-thumb{background:#3a3a3a;border-radius:4px}
-
-  .row{display:flex;margin-bottom:16px;gap:11px}
-  .row.user{justify-content:flex-end}
-  .row .bubble{
-    max-width:72%;padding:10px 14px;border-radius:14px;line-height:1.65;
-    white-space:pre-wrap;word-break:break-word;font-size:13.5px;
-  }
-  .row.user .bubble{
-    background:#1d1d1d;border:1px solid #454545;
-    border-bottom-right-radius:4px;
-  }
-  .row.agent .bubble{
-    background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px;
-  }
-  .row.agent .bubble.fail{border-color:#e8e8e8;border-style:dashed}
-  .who{font-size:11px;color:var(--dim);margin-bottom:4px;display:flex;gap:8px;align-items:center}
-  .who .tm{opacity:.7}
-  .who .fullbtn{
-    color:var(--accent);cursor:pointer;font-size:11px;border:none;background:none;padding:0;
-  }
-  .who .fullbtn:hover{text-decoration:underline}
-  .code{background:#0a0a0a;border:1px solid var(--line);border-radius:8px;padding:10px 12px;
-        font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px;margin:6px 0;
-        white-space:pre-wrap;color:#d8d8d8}
-  .chip{
-    text-align:center;margin:14px 0;font-size:11.5px;color:var(--dim);
-  }
-  .chip span{
-    background:var(--chipbg);border:1px solid var(--line);border-radius:999px;
-    padding:4px 14px;
-  }
-  .thinking .bubble{display:flex;gap:5px;align-items:center;color:var(--dim)}
-  .tb{width:7px;height:7px;border-radius:50%;background:#ffffff;animation:bob 1s infinite}
-  .tb:nth-child(2){animation-delay:.15s}.tb:nth-child(3){animation-delay:.3s}
-  @keyframes bob{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-5px);opacity:1}}
-
-  /* ---------- 输入区 ---------- */
-  #inputbar{
-    flex:none;padding:14px 22px 18px;border-top:1px solid var(--line);
-    background:rgba(13,16,23,.75);backdrop-filter:blur(8px);
-  }
-  #target{
-    display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#cdd6ee;
-    background:var(--chipbg);border:1px solid var(--line);border-radius:999px;
-    padding:4px 12px;margin-bottom:10px;
-  }
-  #target .cdot{width:8px;height:8px;border-radius:50%}
-  #inputrow{display:flex;gap:12px;align-items:flex-end}
-  #box{
-    flex:1;background:#111;border:1px solid #3a3a3a;border-radius:14px;
-    color:var(--text);padding:12px 15px;font-size:14px;font-family:inherit;
-    resize:none;min-height:50px;max-height:170px;line-height:1.6;outline:none;transition:.15s;
-  }
-  #box:focus{border-color:#ffffff;box-shadow:0 0 0 3px rgba(255,255,255,.12)}
-  #send{
-    flex:none;height:50px;padding:0 26px;border:none;border-radius:14px;cursor:pointer;
-    background:#ffffff;color:#000000;
-    font-size:14.5px;font-weight:700;font-family:inherit;transition:.15s;
-    box-shadow:0 4px 16px rgba(255,255,255,.15);
-  }
-  #send:hover{filter:brightness(1.12)}
-  #send:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
-  #hint{font-size:11px;color:var(--dim);margin-top:8px;text-align:right}
-  #full-dialog{
-    width:min(900px,92vw);max-height:86vh;margin:auto;padding:0;overflow:hidden;
-    border:1px solid #4a4a4a;border-radius:12px;background:#090909;color:var(--text);
-  }
-  #full-dialog::backdrop{background:rgba(0,0,0,.78)}
-  #full-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
-  #full-close{border:1px solid var(--line);border-radius:7px;padding:5px 10px;background:#111;color:var(--text);cursor:pointer}
-  #full-text{margin:0;padding:18px;max-height:calc(86vh - 54px);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.65 Consolas,"Cascadia Mono",monospace}
-</style>
-</head>
-<body>
-<div id="app">
-  <div id="side">
-    <div id="logo">
-      <div class="mark">AC</div>
-      <div><div class="t1">Agent Comm Bus</div><div class="t2">多 Agent 通信总线</div></div>
-    </div>
-    <div class="side-note">AGENTS</div>
-    <div id="agents"></div>
-    <div id="broadcast" title="同一条消息发给全部 agent 并行执行">⚡ 广播模式 · 与全体对话</div>
-    <div id="foot">
-      <b>直连对话</b>：选择一个 agent 后在下方输入<br>
-      <b>广播模式</b>：一条消息，所有 agent 同时回答<br>
-      <span id="stat"></span>
-    </div>
-  </div>
-  <div id="main">
-    <div id="top">
-      <div class="title" id="chatTitle">全部对话</div>
-      <div class="sub" id="chatSub"></div>
-      <div id="conn"><div class="st"></div><span>已连接</span></div>
-      <button id="clearbtn">清空日志</button>
-    </div>
-    <div id="chat"></div>
-    <div id="inputbar">
-      <div id="target"><span class="cdot" id="cdot"></span><span id="tname">全部 agent（广播）</span></div>
-      <div id="inputrow">
-        <textarea id="box" placeholder="输入消息…  Enter 发送 · Shift+Enter 换行" rows="1"></textarea>
-        <button id="send">发送 ➤</button>
-      </div>
-      <div id="hint">回复由各 CLI 真实生成，可能需要几十秒；日志同步落盘 log/chat.log</div>
-    </div>
-  </div>
-</div>
-<dialog id="full-dialog" aria-labelledby="full-title">
-  <div id="full-head"><strong id="full-title">回复全文</strong><button id="full-close" type="button">关闭</button></div>
-  <pre id="full-text"></pre>
-</dialog>
-<script>
-const TOKEN='__BUS_TOKEN__';
-let AGENTS=[], META={}, CUR='all', LASTN=0, THINK=new Set();
-
-const $=s=>document.querySelector(s);
-const chat=$('#chat'), box=$('#box');
-const fullDialog=$('#full-dialog'), fullText=$('#full-text');
-const H={'X-Agent-Bus-Token':TOKEN};
-
-function meta(id){return META[id]||{name:id,color:'#6a6a6a'}}
-function avatar(id,size){
-  const m=meta(id);
-  return `<div class="ava" style="width:${size}px;height:${size}px;background:${m.color}">${esc((m.name||id)[0].toUpperCase())}</div>`;
-}
-function esc(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-
-/* 简易 markdown：```代码块``` 与 `行内码`，其余按纯文本（已 esc） */
-function fmt(t){
-  t=esc(t);
-  const parts=[];let i=0;
-  t=t.replace(/```([\s\S]*?)```/g,(_,c)=>{parts.push(c);return `\x00${parts.length-1}\x00`});
-  t=t.replace(/`([^`\n]+)`/g,'<code style="background:#0a0a0a;padding:1px 5px;border-radius:4px;font-family:Consolas,monospace">$1</code>');
-  t=t.replace(/\x00(\d+)\x00/g,(_,n)=>`<div class="code">${parts[n].replace(/^\w*\n/,'')}</div>`);
-  return t;
-}
-
-function bubbleUser(e){
-  return `<div class="row user"><div style="max-width:72%">
-    <div class="who" style="justify-content:flex-end"><span class="tm">${esc(e.time)}</span><span>我</span></div>
-    <div class="bubble">${fmt(e.task||'')}</div></div></div>`;
-}
-function bubbleAgent(e){
-  const m=meta(e.from), fail=e.ok===false;
-  let extra='';
-  if(e.full) extra=`<button class="fullbtn" data-id="${esc(e.id||'')}" onclick="showFull(this.dataset.id)">展开全文</button>`;
-  return `<div class="row agent">${avatar(e.from,32)}
-    <div style="max-width:72%">
-      <div class="who"><span style="color:${m.color};font-weight:600">${esc(m.name)}</span>
-        <span class="oktag" style="color:${fail?'var(--fail)':'var(--ok)'}">${fail?'✕ 失败':'✓'}</span>
-        <span class="tm">${esc(e.time)}</span>${extra}</div>
-      <div class="bubble ${fail?'fail':''}">${fmt(e.content||'')}</div>
-    </div></div>`;
-}
-function chipMsg(e){
-  return `<div class="chip"><span>💬 ${esc(e.from)} → ${esc(e.to)} · ${esc(e.time)}</span></div>`;
-}
-function thinking(id){
-  const m=meta(id);
-  return `<div class="row agent thinking" data-think="${esc(id)}">${avatar(id,32)}
-    <div><div class="who"><span style="color:${m.color};font-weight:600">${esc(m.name)}</span><span class="tm">正在思考…</span></div>
-    <div class="bubble"><div class="tb"></div><div class="tb"></div><div class="tb"></div></div></div></div>`;
-}
-
-function render(){
-  /* 过滤当前 agent */
-  const ents=ENTRIES.filter(e=> CUR==='all' || e.from===CUR || e.to===CUR);
-  let html='';
-  for(const e of ents){
-    if(e.type==='task') html+=bubbleUser(e);
-    else if(e.type==='response') html+=bubbleAgent(e);
-    else html+=chipMsg(e);
-  }
-  for(const id of THINK) if(CUR==='all'||id===CUR) html+=thinking(id);
-  if(!ents.length && !THINK.size) html='<div class="chip"><span>暂无对话，下方发第一条消息吧</span></div>';
-  const stick = chat.scrollHeight-chat.scrollTop-chat.clientHeight < 120;
-  chat.innerHTML=html;
-  if(stick) chat.scrollTop=chat.scrollHeight;
-  $('#stat').textContent=`共 ${ENTRIES.length} 条记录`;
-}
-
-let ENTRIES=[];
-function renderAgents(){
-  let h='';
-  for(const a of AGENTS){
-    const busy=THINK.has(a.id);
-    h+=`<div class="agent ${CUR===a.id?'sel':''}" onclick="selAgent('${a.id}')">
-      <div class="ava" style="background:${a.color}">${esc(a.name[0])}</div>
-      <div class="meta"><div class="nm">${esc(a.name)}<div class="dot ${busy?'busy':''}"></div></div>
-      <div class="tag">${esc(a.tag||a.desc||'')}</div></div></div>`;
-  }
-  $('#agents').innerHTML=h;
-  $('#broadcast').className=CUR==='all'?'sel':'';
-}
-function selAgent(id){
-  CUR=id;
-  const a=AGENTS.find(x=>x.id===id);
-  $('#tname').textContent=a?a.name+' · 单聊':'';
-  $('#cdot').style.background=a?a.color:'#ffffff';
-  $('#chatTitle').textContent=a?a.name+' 对话':'全部对话';
-  $('#chatSub').textContent=a?(a.tag||''):'时间线视图';
-  renderAgents();render();
-}
-$('#broadcast').onclick=()=>{selAgent('all');$('#tname').textContent='全部 agent（广播）'};
-
-window.showFull=function(rid){
-  fetch('/api/full?id='+encodeURIComponent(rid),{headers:H})
-    .then(async r=>{
-      const d=await r.json();
-      if(!r.ok || typeof d.text!=='string') throw new Error('全文不存在');
-      fullText.textContent=d.text;
-      fullDialog.showModal();
-    }).catch(e=>alert(e.message||'读取全文失败'));
-};
-$('#full-close').onclick=()=>fullDialog.close();
-
-function poll(){
-  fetch('/api/state',{headers:H}).then(r=>r.json()).then(s=>{
-    AGENTS=s.agents; META={}; AGENTS.forEach(a=>META[a.id]=a);
-    THINK=new Set(Object.keys(s.busy).filter(k=>s.busy[k]));
-    ENTRIES=s.entries;
-    renderAgents();render();
-  }).catch(()=>{$('#conn span').textContent='连接断开';$('#conn .st').style.background='var(--fail)'});
-}
-
-function send(){
-  const t=box.value.trim(); if(!t) return;
-  box.value='';box.style.height='auto';
-  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json','X-Agent-Bus-Token':TOKEN},
-    body:JSON.stringify({agent:CUR,text:t})}).then(r=>r.json()).then(()=>{
-      poll();
-    });
-}
-$('#send').onclick=send;
-box.addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}
-});
-box.addEventListener('input',()=>{box.style.height='auto';box.style.height=Math.min(box.scrollHeight,170)+'px'});
-
-$('#clearbtn').onclick=()=>{
-  if(!confirm('确定清空 log/chat.log？inbox 与回复全文不会被删除')) return;
-  fetch('/api/clear',{method:'POST',headers:{'Content-Type':'application/json','X-Agent-Bus-Token':TOKEN},
-    body:JSON.stringify({confirm:true})}).then(poll);
-};
-
-selAgent('all');poll();setInterval(poll,1500);
-</script>
-</body>
-</html>"""
-
-
 def main():
     global TOKEN
     try:
@@ -923,8 +586,8 @@ def main():
     except RuntimeError as exc:
         raise SystemExit(f"WebUI unavailable: {exc}")
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    url = f"http://127.0.0.1:{PORT}"
-    print(f"Agent Comm Bus 聊天窗口已启动: {url}")
+    url = f"http://127.0.0.1:{PORT}/#token={TOKEN}"
+    print(f"Agent Comm Bus 聊天窗口已启动；本地访问链接（含令牌，请勿转发）: {url}")
     print("访问仅限本机回环地址；API 需要 X-Agent-Bus-Token。")
     print(f"已接入 agent: {', '.join(agents.keys())}  (Ctrl+C 退出)")
     threading.Timer(0.8, lambda: webbrowser.open(url)).start()

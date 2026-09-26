@@ -66,22 +66,25 @@ def _secure_hub_storage(root: Path):
         # SID full control. /T applies the ACL to pre-existing Hub records too.
         try:
             identity = subprocess.run(["whoami.exe", "/user", "/fo", "csv", "/nh"],
-                check=True, capture_output=True, text=True).stdout
-            rows = list(__import__("csv").reader(identity.splitlines()))
-            sid = rows[0][1] if rows and len(rows[0]) > 1 else ""
-            if not sid.startswith("S-"):
+                check=True, capture_output=True).stdout
+            # The account name uses the active Windows code page. The SID is
+            # ASCII in every code page and can be read without decoding it.
+            rows = [line for line in identity.splitlines() if line.strip()]
+            match = re.fullmatch(rb'.*,\s*"?(S-\d+(?:-\d+)+)"?\s*', rows[0]) if len(rows) == 1 else None
+            if match is None:
                 raise OSError("could not determine current Windows user SID")
+            sid = match.group(1).decode("ascii")
             subprocess.run(["icacls.exe", str(root), "/reset", "/T", "/C"],
-                check=True, capture_output=True, text=True)
+                check=True, capture_output=True)
             subprocess.run(["icacls.exe", str(root), "/inheritance:r", "/T", "/C"],
-                check=True, capture_output=True, text=True)
+                check=True, capture_output=True)
             # The recursive grant must apply F directly to files and folders;
             # OI/CI-only ACEs on files would leave them with no usable access.
             subprocess.run(["icacls.exe", str(root), "/grant:r", f"*{sid}:F", "/T", "/C"],
-                check=True, capture_output=True, text=True)
+                check=True, capture_output=True)
             # Add inheritance for objects created after initialization.
             subprocess.run(["icacls.exe", str(root), "/grant", f"*{sid}:(OI)(CI)F"],
-                check=True, capture_output=True, text=True)
+                check=True, capture_output=True)
         except (OSError, subprocess.SubprocessError, IndexError) as exc:
             raise OSError("could not restrict Windows permissions on Hub storage") from exc
     else:
@@ -226,6 +229,10 @@ class AgentHub:
             else:
                 existing = self._read_json(self._config_path)
                 migrated = {**config_defaults, **existing}
+                # Earlier releases accepted 5..16, but CLI communication has
+                # always enforced a maximum depth of four.
+                if type(migrated.get("max_depth")) is int and migrated["max_depth"] > 4:
+                    migrated["max_depth"] = 4
                 if migrated != existing:
                     self._atomic_json(self._config_path, migrated)
             if not self._registry_path.exists():
@@ -241,47 +248,104 @@ class AgentHub:
         """At-most-once restart policy: resume only queued work; never replay running work."""
         queued = []
         summary_idle = []
+        healthy_run_ids = set()
         with self._locked():
-            referenced = set()
-            for run_path in self.runs_dir.glob("*.json"):
-                referenced.update(self._read_json(run_path).get("task_ids", []))
+            runs = {}
+            for run_path in sorted(self.runs_dir.glob("*.json")):
+                try:
+                    run = self._read_json(run_path)
+                    if (not isinstance(run, dict) or run.get("run_id") != run_path.stem or
+                            not isinstance(run.get("task_ids"), list) or
+                            run.get("mode") not in ("direct", "orchestrated") or
+                            "completed_at" not in run or
+                            (run.get("mode") == "orchestrated" and not isinstance(run.get("plan"), dict)) or
+                            not isinstance(run.get("summary", {}), dict) or
+                            not isinstance(run.get("status"), str) or
+                            any(not isinstance(tid, str) or not ID_RE.fullmatch(tid)
+                                for tid in run["task_ids"])):
+                        continue
+                except HubError:
+                    continue
+                runs[run["run_id"]] = run
             for path in sorted(self.tasks_dir.glob("*.json")):
-                task = self._read_json(path)
+                try:
+                    task = self._read_json(path)
+                    if (not isinstance(task, dict) or task.get("task_id") != path.stem or
+                            not isinstance(task.get("run_id"), str) or
+                            not ID_RE.fullmatch(task["run_id"]) or
+                            task.get("status") not in ("queued", "running", "succeeded", "failed",
+                                "execution_timeout", "cancelled", "interrupted") or
+                            not isinstance(task.get("summary", {}), dict)):
+                        continue
+                except HubError:
+                    continue
+                run_id = task["run_id"]
+                healthy_run = run_id in runs and task["task_id"] in runs[run_id]["task_ids"]
                 if task.get("summary", {}).get("status") == "pending":
                     task["summary"].update(status="failed", content=None, generated_at=_iso(),
                         error={"category": "interrupted", "message": "Hub restarted during task summary generation"})
                     self._atomic_json(path, task)
-                    self._event_locked(task["run_id"], "summary", task_id=task["task_id"], scope="task",
-                        state="failed", error_category="interrupted")
+                    if healthy_run:
+                        self._event_locked(run_id, "summary", task_id=task["task_id"], scope="task",
+                            state="failed", error_category="interrupted")
                 elif (task.get("status") == "succeeded" and task.get("response_id") and
-                      task.get("summary", {}).get("status") in (None, "idle")):
+                      task.get("summary", {}).get("status") in (None, "idle") and healthy_run):
                     summary_idle.append(task["task_id"])
-                if task.get("status") == "running" or task.get("task_id") not in referenced:
+                if task.get("status") == "running" or not healthy_run:
                     task["status"] = "interrupted"
                     task["completed_at"] = _iso()
-                    category = "orphaned_record" if task.get("task_id") not in referenced else "interrupted"
-                    message = ("Task record was not committed to a run and was not dispatched" if category == "orphaned_record"
+                    category = "orphaned_record" if not healthy_run else "interrupted"
+                    message = ("Task record is not in its own valid run and was not dispatched" if category == "orphaned_record"
                                else "Hub restarted after dispatch; task was not retried")
                     task["error"] = {"category": category, "message": message}
                     self._atomic_json(path, task)
-                    self._event_locked(task["run_id"], "status", task_id=task["task_id"], state="interrupted",
-                                       error_category=category)
-                elif task.get("status") == "queued":
+                    if healthy_run:
+                        self._event_locked(run_id, "status", task_id=task["task_id"], state="interrupted",
+                                           error_category=category)
+                elif task.get("status") == "queued" and healthy_run:
                     queued.append(task["task_id"])
-            for path in self.runs_dir.glob("*.json"):
-                run = self._read_json(path)
+            for run_id, run in runs.items():
+                path = self._record_path(self.runs_dir, run_id)
+                try:
+                    tasks = [self._read_json(self._record_path(self.tasks_dir, tid)) for tid in run["task_ids"]]
+                    if any(not isinstance(task, dict) or task.get("task_id") != tid or
+                           task.get("run_id") != run_id or task.get("status") not in (
+                               "queued", "running", "succeeded", "failed", "execution_timeout", "cancelled", "interrupted") or
+                           (task.get("status") == "queued" and (not isinstance(task.get("agent_id"), str) or
+                               not isinstance(task.get("prompt"), str) or
+                               not isinstance(task.get("depends_on_task_ids", []), list)))
+                           for task, tid in zip(tasks, run["task_ids"])):
+                        continue
+                except HubError:
+                    continue
+                healthy_run_ids.add(run_id)
                 if run.get("summary", {}).get("status") == "pending":
                     run["summary"].update(status="failed", content=None,
                         error={"category": "interrupted", "message": "Hub restarted during summary generation"})
                     self._atomic_json(path, run)
                     self._event_locked(run["run_id"], "summary", state="failed", error_category="interrupted")
-                if any(self._read_json(self._record_path(self.tasks_dir, tid))["status"] == "interrupted"
-                       for tid in run.get("task_ids", [])):
-                    self._refresh_run_locked(run["run_id"])
+                if any(task["status"] == "interrupted" for task in tasks):
+                    self._refresh_run_locked(run_id)
+            ready = []
+            for task_id in queued:
+                path = self._record_path(self.tasks_dir, task_id)
+                task = self._read_json(path)
+                if task["run_id"] in healthy_run_ids:
+                    ready.append(task_id)
+                    continue
+                # A run may parse correctly yet have a missing or damaged
+                # sibling. Do not leave its surviving queued tasks stranded.
+                task["status"] = "interrupted"
+                task["completed_at"] = _iso()
+                task["error"] = {"category": "invalid_run",
+                                 "message": "Hub restarted with an incomplete run; task was not dispatched"}
+                self._atomic_json(path, task)
+            queued = ready
         for task_id in queued:
             self._submit(task_id)
         for task_id in summary_idle:
-            self._request_task_summary(task_id)
+            if self.get_task(task_id)["run_id"] in healthy_run_ids:
+                self._request_task_summary(task_id)
 
     @staticmethod
     def _load_bus_agents():
@@ -410,9 +474,12 @@ class AgentHub:
         registry = self._read_registry(runtime=False)
         providers = []
         for row in registry.get("providers", []):
-            providers.append({"id": row.get("id"), "protocol": row.get("protocol"),
+            public = {"id": row.get("id"), "protocol": row.get("protocol"),
                 "base_url": row.get("base_url"), "allow_insecure_loopback": row.get("allow_insecure_loopback", False),
-                "has_api_key": bool(row.get("api_key"))})
+                "has_api_key": bool(row.get("api_key"))}
+            if row.get("protocol") == "openai-chat-completions":
+                public["output_limit_field"] = row.get("output_limit_field", "max_tokens")
+            providers.append(public)
         provider_agents = [{key: row[key] for key in ("id", "desc", "provider_id", "model", "timeout", "max_tokens") if key in row}
                            for row in registry.get("provider_agents", [])]
         templates = [{key: row[key] for key in ("id", "desc", "provider_id", "model", "enabled", "max_tokens") if key in row}
@@ -442,7 +509,7 @@ class AgentHub:
         provider_rows, provider_ids = [], set()
         import hub_providers
         for row in incoming["providers"]:
-            if not isinstance(row, dict) or set(row) - {"id", "protocol", "base_url", "api_key", "allow_insecure_loopback"}:
+            if not isinstance(row, dict) or set(row) - {"id", "protocol", "base_url", "api_key", "allow_insecure_loopback", "output_limit_field"}:
                 raise HubError("invalid_request", "Provider contains unsupported fields")
             ident, protocol, url = row.get("id"), row.get("protocol"), row.get("base_url")
             if not isinstance(ident, str) or not AGENT_RE.fullmatch(ident) or ident in provider_ids:
@@ -454,6 +521,10 @@ class AgentHub:
                 hub_providers.validate_base_url(protocol, url, allow_http)
             except hub_providers.ProviderError as exc:
                 raise HubError("invalid_request", str(exc)) from exc
+            output_limit_field = row.get("output_limit_field", "max_tokens")
+            if output_limit_field not in ("max_tokens", "max_completion_tokens") or (
+                    "output_limit_field" in row and protocol != "openai-chat-completions"):
+                raise HubError("invalid_request", "output_limit_field is invalid for this protocol")
             previous = previous_providers.get(ident, {})
             def origin(protocol_value, url_value):
                 try:
@@ -476,6 +547,8 @@ class AgentHub:
             elif not isinstance(secret, str) or len(secret) > 8192 or any(ord(char) < 32 or ord(char) == 127 for char in secret):
                 raise HubError("invalid_request", "api_key must be a bounded credential without control characters")
             clean = {"id": ident, "protocol": protocol, "base_url": url.rstrip("/"), "allow_insecure_loopback": allow_http}
+            if protocol == "openai-chat-completions":
+                clean["output_limit_field"] = output_limit_field
             if secret is not None:
                 clean["api_key"] = secret
             provider_rows.append(clean)
@@ -570,7 +643,7 @@ class AgentHub:
             raise HubError("invalid_request", "orchestrator_enabled must be a boolean")
         if candidate.get("summary_policy") not in ("auto", "manual"):
             raise HubError("invalid_request", "summary_policy must be auto or manual")
-        for key, minimum, maximum in (("max_tasks", 1, 100), ("max_depth", 1, 16),
+        for key, minimum, maximum in (("max_tasks", 1, 100), ("max_depth", 1, 4),
                                       ("max_messages_per_task", 1, 1000), ("max_agents", 0, 100)):
             value = candidate.get(key)
             if type(value) is not int or not minimum <= value <= maximum:
@@ -1185,8 +1258,10 @@ class AgentHub:
         return True
 
     def _execute(self, task_id):
-        task = self.get_task(task_id)
+        task = None
+        agents = {}
         try:
+            task = self.get_task(task_id)
             run_snapshot = self._read_json(self._record_path(self.runs_dir, task["run_id"]))
             agents = self._agents_for_run(run_snapshot)
             role = task.get("role", "worker")
@@ -1305,29 +1380,53 @@ class AgentHub:
                     self._atomic_json(self._record_path(self.runs_dir, task["run_id"]), run_record)
                 self._refresh_run_locked(task["run_id"])
         except BaseException as exc:
+            # Persist the task's terminal state before touching its run or
+            # event log. Either may be absent or damaged while the worker runs.
             with self._locked():
-                task = self._read_json(self._record_path(self.tasks_dir, task_id))
-                if task["status"] in ("running", "overdue"):
-                    task["status"] = "execution_timeout" if isinstance(exc, TimeoutError) else "failed"
-                    task["completed_at"] = _iso()
+                try:
+                    task = self._read_json(self._record_path(self.tasks_dir, task_id))
+                except HubError:
+                    task = None
+                if isinstance(task, dict) and task.get("status") in ("running", "overdue"):
                     category = ("execution_timeout" if isinstance(exc, TimeoutError) else
                                 "output_too_large" if isinstance(exc, OutputLimitError) else
                                 "invalid_output" if isinstance(exc, (TypeError, UnicodeError, ValueError)) else "execution_error")
-                    task["error"] = {"category": category,
-                                      "message": self._redact_output(str(exc), agents)[:1000]}
+                    try:
+                        message = self._redact_output(str(exc), agents)[:1000]
+                    except Exception:
+                        message = "Worker failed; error detail unavailable"
+                    task["status"] = "execution_timeout" if isinstance(exc, TimeoutError) else "failed"
+                    task["completed_at"] = _iso()
+                    task["error"] = {"category": category, "message": message}
                     self._atomic_json(self._record_path(self.tasks_dir, task_id), task)
-                    if task.get("role") == "orchestrator":
-                        run = self._read_json(self._record_path(self.runs_dir, task["run_id"]))
-                        run["plan"].update(status="failed", error=task["error"])
-                        run["status"] = "failed"
-                        run["error"] = task["error"]
-                        run["completed_at"] = _iso()
-                        self._atomic_json(self._record_path(self.runs_dir, run["run_id"]), run)
-                    self._event_locked(task["run_id"], "status", task_id=task_id, state=task["status"], error_category=category)
-                    self._refresh_run_locked(task["run_id"])
+                    try:
+                        if task.get("role") == "orchestrator":
+                            run = self._read_json(self._record_path(self.runs_dir, task["run_id"]))
+                            run["plan"].update(status="failed", error=task["error"])
+                            run["status"] = "failed"
+                            run["error"] = task["error"]
+                            run["completed_at"] = _iso()
+                            self._atomic_json(self._record_path(self.runs_dir, run["run_id"]), run)
+                        self._event_locked(task["run_id"], "status", task_id=task_id, state=task["status"], error_category=category)
+                        self._refresh_run_locked(task["run_id"])
+                    except (HubError, KeyError, TypeError):
+                        # A damaged run remains on disk as evidence; the task
+                        # itself is terminal and will never be replayed.
+                        pass
+                elif isinstance(task, dict) and task.get("status") in hub_protocol.TERMINAL_STATES:
+                    # The response may have been committed before a transient
+                    # run refresh error. Retry that derived status once.
+                    try:
+                        self._refresh_run_locked(task["run_id"])
+                    except (HubError, KeyError, TypeError):
+                        pass
         finally:
             self._futures.pop(task_id, None)
-            self._after_task_change(task["run_id"])
+            if isinstance(task, dict) and isinstance(task.get("run_id"), str):
+                try:
+                    self._after_task_change(task["run_id"])
+                except (HubError, KeyError, TypeError):
+                    pass
 
     def _refresh_run_locked(self, run_id):
         run = self._read_json(self._record_path(self.runs_dir, run_id))
@@ -1552,10 +1651,13 @@ class AgentHub:
             if current_parent["status"] != "running":
                 raise HubError("conflict", "Parent task is no longer running")
             prior = None
+            count = 0
             for candidate in self._indexed_events_locked(run["run_id"]):
                 if candidate.get("message_id") == e["message_id"]:
                     prior = candidate
                     break
+                if candidate.get("kind") == "message" and candidate.get("task_id") == parent["task_id"]:
+                    count += 1
             if prior:
                 if prior.get("envelope_sha256") != envelope_hash:
                     raise HubError("conflict", "message_id was already used for a different envelope")
@@ -1563,8 +1665,6 @@ class AgentHub:
                 return {"event": prior, "task": self.get_task(child_id) if child_id else None}
             current = self._read_json(self._record_path(self.runs_dir, run["run_id"]))
             config = self._read_json(self._config_path)
-            count = sum(1 for item in self.list_events(run["run_id"], limit=1000)
-                        if item.get("kind") == "message" and item.get("task_id") == parent["task_id"])
             message_limit = current.get("max_messages_per_task", config["max_messages_per_task"])
             if count >= message_limit:
                 self._event_locked(run["run_id"], "rejected", relation=e["relation"], task_id=parent["task_id"], reason="message_limit")

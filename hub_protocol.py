@@ -129,8 +129,6 @@ def validate_plan(raw_plan: str | Mapping[str, object], registered_agent_ids: Se
         raise ProtocolError("approved template IDs must be an array")
     if any(not isinstance(item, str) or not AGENT_ID_RE.fullmatch(item) for item in approved_template_ids):
         raise ProtocolError("approved template IDs are invalid")
-    if any(not isinstance(item, str) or not AGENT_ID_RE.fullmatch(item) for item in approved_template_ids):
-        raise ProtocolError("approved template IDs are invalid")
     approved = set(approved_template_ids)
     if not isinstance(summary, str) or not summary.strip() or len(summary) > MAX_PLAN_SUMMARY_CHARS:
         raise ProtocolError("summary must be a non-empty short string")

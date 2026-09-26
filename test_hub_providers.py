@@ -2,6 +2,7 @@
 import json
 import os
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
@@ -48,6 +49,114 @@ def _serve(response_payload=None, redirect_to=None):
 
 
 class ProviderAdapterTests(unittest.TestCase):
+    def test_slow_trickle_respects_total_timeout(self):
+        class SlowHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                self.send_response(200)
+                self.send_header("Content-Length", "20")
+                self.end_headers()
+                for _ in range(20):
+                    try:
+                        self.wfile.write(b"x")
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                        break
+                    time.sleep(0.05)
+            def log_message(self, *_): pass
+        server = _ProviderServer(("127.0.0.1", 0), SlowHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            agent = {"provider": {"protocol": "openai-chat-completions",
+                "base_url": f"http://127.0.0.1:{server.server_port}",
+                "allow_insecure_loopback": True}, "model": "fixture"}
+            started = time.monotonic()
+            with self.assertRaisesRegex(hub_providers.ProviderError, "timed out"):
+                hub_providers.complete(agent, "prompt", timeout=0.2)
+            self.assertLess(time.monotonic() - started, 0.6)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_http_error_does_not_drain_slow_body(self):
+        class ErrorHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                self.send_response(429)
+                self.send_header("Content-Length", "20")
+                self.end_headers()
+                for _ in range(20):
+                    try:
+                        self.wfile.write(b"x")
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                        break
+                    time.sleep(0.05)
+            def log_message(self, *_): pass
+        server = _ProviderServer(("127.0.0.1", 0), ErrorHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            agent = {"provider": {"protocol": "openai-chat-completions",
+                "base_url": f"http://127.0.0.1:{server.server_port}",
+                "allow_insecure_loopback": True}, "model": "fixture"}
+            started = time.monotonic()
+            with self.assertRaisesRegex(hub_providers.ProviderError, "HTTP 429"):
+                hub_providers.complete(agent, "prompt", timeout=0.2)
+            self.assertLess(time.monotonic() - started, 0.6)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_max_tokens_reaches_each_provider_wire_format(self):
+        cases = [
+            ("openai-chat-completions", {"max_tokens": 37}),
+            ("anthropic-messages", {"max_tokens": 37}),
+            ("ollama-chat", {"options": {"num_predict": 37}}),
+        ]
+        responses = {
+            "openai-chat-completions": {"choices": [{"message": {"content": "ok"}}]},
+            "anthropic-messages": {"content": [{"type": "text", "text": "ok"}]},
+            "ollama-chat": {"message": {"content": "ok"}},
+        }
+        for protocol, expected in cases:
+            with self.subTest(protocol=protocol):
+                server, _ = _serve(responses[protocol])
+                try:
+                    agent = {"provider": {"protocol": protocol,
+                        "base_url": f"http://127.0.0.1:{server.server_port}",
+                        "allow_insecure_loopback": True}, "model": "fixture", "max_tokens": 37}
+                    self.assertEqual("ok", hub_providers.complete(agent, "prompt"))
+                    self.assertTrue(expected.items() <= server.payloads[0].items())
+                finally:
+                    server.shutdown()
+                    server.server_close()
+
+    def test_rejects_invalid_max_tokens_before_request(self):
+        for invalid in (0, -1, True, 1.5, "37", 100001):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(hub_providers.ProviderError, "max_tokens"):
+                hub_providers.complete({"provider": {"protocol": "openai-chat-completions",
+                    "base_url": "https://example.invalid"}, "model": "fixture", "max_tokens": invalid}, "prompt")
+
+    def test_openai_explicit_new_output_limit_field(self):
+        server, _ = _serve({"choices": [{"message": {"content": "ok"}}]})
+        try:
+            agent = {"provider": {"protocol": "openai-chat-completions",
+                "base_url": f"http://127.0.0.1:{server.server_port}",
+                "allow_insecure_loopback": True, "output_limit_field": "max_completion_tokens"},
+                "model": "fixture", "max_tokens": 37}
+            self.assertEqual("ok", hub_providers.complete(agent, "prompt"))
+            self.assertEqual(37, server.payloads[0]["max_completion_tokens"])
+            self.assertNotIn("max_tokens", server.payloads[0])
+        finally:
+            server.shutdown()
+            server.server_close()
+        for value in ("unsupported", 42, None):
+            with self.subTest(value=value), self.assertRaisesRegex(hub_providers.ProviderError, "output_limit_field"):
+                hub_providers.complete({"provider": {"protocol": "openai-chat-completions",
+                    "base_url": "https://example.invalid", "output_limit_field": value},
+                    "model": "fixture"}, "prompt")
+
     def test_provider_specific_wire_shapes_model_ids_and_endpoint_forms(self):
         cases = [
             ("openai-chat-completions", "", "/v1/chat/completions",

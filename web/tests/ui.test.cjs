@@ -2,10 +2,69 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const status = require('../status.js');
 const deadline = require('../deadline.js');
 
 const web = path.resolve(__dirname, '..');
+
+test('fragment bootstrap removes URL token and keeps it out of page markup', () => {
+  const html = fs.readFileSync(path.join(web, 'index.html'), 'utf8');
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const token = 'a'.repeat(64);
+  assert.doesNotMatch(html, /__BUS_TOKEN__|agent-bus-token/);
+  const prefix = app.slice(0, app.indexOf('  const AGENT_COLORS'));
+  const storage = new Map();
+  const elements = new Map();
+  const context = {
+    window: { AgentHubTaskStatus: {}, AgentHubDeadline: {} },
+    document: { querySelector: selector => {
+      if (!elements.has(selector)) elements.set(selector, { value: '', textContent: '', style: {}, focus() {} });
+      return elements.get(selector);
+    } },
+    location: { hash: `#token=${token}`, pathname: '/', search: '' },
+    history: { replaceState(_state, _title, url) { this.cleanedUrl = url; } },
+    sessionStorage: { setItem(key, value) { storage.set(key, value); }, getItem(key) { return storage.get(key); }, removeItem(key) { storage.delete(key); } },
+    clearInterval() {}, URLSearchParams
+  };
+  vm.runInNewContext(`${prefix} const state={timer:null}; globalThis.bootstrapOk=bootstrapToken(); globalThis.apiToken=HEADERS['X-Agent-Bus-Token']; })();`, context);
+  assert.equal(context.bootstrapOk, true);
+  assert.equal(context.history.cleanedUrl, '/');
+  assert.equal(context.apiToken, token);
+  assert.equal(storage.get('agentHubToken'), token);
+});
+
+test('provider payload sends output limit field only for OpenAI-compatible protocol', () => {
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const start = app.indexOf('  function serializeProvider(provider)');
+  const end = app.indexOf('  async function saveRegistry', start);
+  assert.ok(start >= 0 && end > start);
+  const context = {};
+  vm.runInNewContext(`${app.slice(start, end)} globalThis.serializeProvider = serializeProvider;`, context);
+  const common = { id: 'p', base_url: 'https://example.invalid', output_limit_field: 'max_completion_tokens' };
+  const openai = context.serializeProvider({ ...common, protocol: 'openai-chat-completions' });
+  const anthropic = context.serializeProvider({ ...common, protocol: 'anthropic-messages' });
+  const ollama = context.serializeProvider({ ...common, protocol: 'ollama-chat' });
+  assert.equal(openai.output_limit_field, 'max_completion_tokens');
+  assert.equal(Object.hasOwn(anthropic, 'output_limit_field'), false);
+  assert.equal(Object.hasOwn(ollama, 'output_limit_field'), false);
+});
+
+test('registry normalization and save payload retain agent and template output limits', () => {
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(web, 'index.html'), 'utf8');
+  const start = app.indexOf('  function normalizedRegistry(value = {})');
+  const end = app.indexOf('  function updateAgentCatalog', start);
+  assert.ok(start >= 0 && end > start);
+  const context = {};
+  vm.runInNewContext(`${app.slice(start, end)} globalThis.normalizedRegistry = normalizedRegistry;`, context);
+  const normalized = context.normalizedRegistry({ provider_agents: [{ id: 'a', max_tokens: 8192 }], templates: [{ id: 't', max_tokens: 2048 }] });
+  assert.equal(normalized.provider_agents[0].max_tokens, 8192);
+  assert.equal(normalized.templates[0].max_tokens, 2048);
+  assert.match(app, /max_tokens: item\.max_tokens \?\? 4096/g);
+  assert.match(html, /id="agentEditor"[\s\S]*name="max_tokens"/);
+  assert.match(html, /id="templateEditor"[\s\S]*name="max_tokens"/);
+});
 
 test('service restart interruption is terminal and clearly labeled', () => {
   assert.equal(status.isTerminal('interrupted'), true);

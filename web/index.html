@@ -3,12 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="agent-bus-token" content="__BUS_TOKEN__">
   <link rel="icon" href="data:,">
   <title>Agent Hub · 协作控制台</title>
   <link rel="stylesheet" href="/web/style.css">
 </head>
 <body>
+<div id="tokenGate" role="dialog" aria-modal="true" aria-labelledby="tokenGateTitle" style="position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;background:#4c4946d9;padding:24px">
+  <form id="tokenForm" style="width:min(100%,420px);padding:28px;border-radius:16px;background:#f8f7f5;color:#302d29;box-shadow:0 20px 60px #0004">
+    <h2 id="tokenGateTitle">输入本机访问令牌</h2>
+    <p>Windows：在启动服务器的用户下运行 <code>python bus.py token</code>。其他系统：使用服务器启动控制台打印的本地链接。</p>
+    <label for="tokenInput">访问令牌</label>
+    <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" required pattern="[0-9a-f]{64}" style="display:block;width:100%;box-sizing:border-box;margin:10px 0 16px;padding:10px">
+    <button type="submit" style="padding:10px 18px">连接 Agent Hub</button>
+    <p id="tokenError" role="alert"></p>
+  </form>
+</div>
 <div class="shell">
   <aside class="sidebar" aria-label="工作区与 Agent">
     <div class="brand"><div class="brandmark" aria-hidden="true">A</div><div><b>Agent Hub</b><small>工作空间</small></div></div>
@@ -89,6 +98,7 @@
             <div class="form-grid">
               <label class="form-field">标识符<input name="id" required maxlength="32" pattern="[A-Za-z0-9_-]{1,32}" placeholder="my-provider"></label>
               <label class="form-field">接口协议<select name="protocol" required><option value="openai-chat-completions">OpenAI 兼容（Chat Completions）</option><option value="anthropic-messages">Anthropic Messages</option><option value="ollama-chat">Ollama Chat</option></select></label>
+              <label class="form-field" id="outputTokenFieldRow">输出上限字段<select name="output_limit_field"><option value="max_tokens">max_tokens（通用兼容，默认）</option><option value="max_completion_tokens">max_completion_tokens（部分新模型）</option></select><small class="field-help">按目标服务要求选择；不会自动切换或重试。</small></label>
               <label class="form-field wide">API 地址<input name="base_url" type="url" required placeholder="https://api.example.com/v1"><small class="field-help">填写服务根地址或完整 API 路径；协议会按所选兼容格式请求。</small></label>
               <label class="form-field check-field wide"><input name="allow_insecure_loopback" type="checkbox"> 允许不加密的本机回环地址（仅限本机 Ollama 等服务）</label>
               <label class="form-field wide">API 密钥或环境变量引用<div class="secret-input"><input name="api_key" type="password" autocomplete="off" spellcheck="false" placeholder="API 密钥或 ${ENV:OPENAI_API_KEY}；留空则保留已保存值"><button type="button" class="reveal-secret" aria-label="显示输入内容" aria-pressed="false">显示</button></div><small class="field-help" data-secret-state>只作为输入发送；保存后不会回显。当前平台不支持受保护存储时，请使用 ${ENV:VARIABLE_NAME}。</small></label>
@@ -110,6 +120,7 @@
               <label class="form-field">提供商<select name="provider_id" required><option value="">先添加提供商</option></select></label>
               <label class="form-field">模型<input name="model" required maxlength="120" placeholder="model-name"><small class="field-help">填写提供商支持的模型标识。</small></label>
               <label class="form-field">超时（秒）<input name="timeout" type="number" min="1" max="86400" value="600" required></label>
+              <label class="form-field">最大输出 tokens<input name="max_tokens" type="number" min="1" max="100000" step="1" value="4096" required></label>
             </div>
             <div class="editor-actions"><button class="secondary-button" type="button" data-cancel-agent>取消</button><button class="primary-button" type="submit">保存 Agent</button></div>
           </form>
@@ -120,6 +131,7 @@
               <label class="form-field">显示名称<input name="desc" required maxlength="120" placeholder="Reviewer"></label>
               <label class="form-field">提供商<select name="provider_id" required><option value="">选择提供商</option></select></label>
               <label class="form-field">模型<input name="model" required maxlength="120" placeholder="model-name"><small class="field-help">填写此子 Agent 模板要使用的模型标识。</small></label>
+              <label class="form-field">最大输出 tokens<input name="max_tokens" type="number" min="1" max="100000" step="1" value="4096" required></label>
               <label class="form-field check-field"><input name="enabled" type="checkbox" checked> 启用并加入批准列表</label>
             </div>
             <div class="editor-actions"><button class="secondary-button" type="button" data-cancel-template>取消</button><button class="primary-button" type="submit">保存模板</button></div>

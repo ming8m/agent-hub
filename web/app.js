@@ -3,10 +3,43 @@
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-  const TOKEN = $('meta[name="agent-bus-token"]')?.content || '';
+  let TOKEN = '';
   const TaskStatus = window.AgentHubTaskStatus;
   const Deadline = window.AgentHubDeadline;
-  const HEADERS = { 'X-Agent-Bus-Token': TOKEN };
+  const HEADERS = {};
+  const TOKEN_STORE_KEY = 'agentHubToken';
+  function setToken(value) {
+    if (!/^[0-9a-f]{64}$/.test(value)) return false;
+    TOKEN = value;
+    HEADERS['X-Agent-Bus-Token'] = value;
+    try { sessionStorage.setItem(TOKEN_STORE_KEY, value); } catch { /* memory remains usable */ }
+    $('#tokenInput').value = '';
+    $('#tokenError').textContent = '';
+    $('#tokenGate').style.display = 'none';
+    $('.shell').inert = false;
+    return true;
+  }
+  function requireToken(message = '') {
+    TOKEN = '';
+    delete HEADERS['X-Agent-Bus-Token'];
+    try { sessionStorage.removeItem(TOKEN_STORE_KEY); } catch { /* unavailable storage */ }
+    clearInterval(state.timer);
+    $$('dialog[open]').forEach(dialog => dialog.close());
+    $('.shell').inert = true;
+    $('#tokenError').textContent = message;
+    $('#tokenGate').style.display = 'flex';
+    $('#tokenInput').focus();
+  }
+  function bootstrapToken() {
+    const fragment = location.hash;
+    if (fragment) history.replaceState(null, '', location.pathname + location.search);
+    const candidate = new URLSearchParams(fragment.replace(/^#/, '')).get('token');
+    if (candidate && setToken(candidate)) return true;
+    try { if (setToken(sessionStorage.getItem(TOKEN_STORE_KEY) || '')) return true; }
+    catch { /* manual entry remains available */ }
+    requireToken();
+    return false;
+  }
   const AGENT_COLORS = ['violet', 'blue', 'green', 'orange', 'slate'];
   const RELATIONS = ['all', 'orchestrator_worker', 'worker_worker'];
   const STORE_KEY = 'agentHubRunsV1';
@@ -40,6 +73,7 @@
     } catch (error) {
       const issue = new Error('无法连接 Agent Hub。输入内容已保留。'); issue.cause = error; throw issue;
     }
+    if (response.status === 401) requireToken('令牌已失效，请重新输入。');
     if (!response.ok || payload?.ok === false) {
       const messages = {
         unknown_agent: '目标 Agent 已不在注册表中，请刷新后重新选择。',
@@ -199,9 +233,9 @@
     return {
       secret_storage: value.secret_storage === 'env-reference-only' ? 'env-reference-only' : 'dpapi-or-env',
       agents: Array.isArray(value.agents) ? value.agents.map(item => ({ id: item.id, desc: item.desc, kind: item.kind })) : [],
-      providers: Array.isArray(value.providers) ? value.providers.map(item => ({ id: item.id, protocol: item.protocol, base_url: item.base_url, allow_insecure_loopback: Boolean(item.allow_insecure_loopback), has_api_key: item.has_api_key === true })) : [],
-      provider_agents: Array.isArray(value.provider_agents) ? value.provider_agents.map(item => ({ id: item.id, desc: item.desc, provider_id: item.provider_id, model: item.model, timeout: item.timeout })) : [],
-      templates: Array.isArray(value.templates) ? value.templates.map(item => ({ id: item.id, provider_id: item.provider_id, model: item.model, desc: item.desc, enabled: item.enabled !== false })) : [],
+      providers: Array.isArray(value.providers) ? value.providers.map(item => ({ id: item.id, protocol: item.protocol, base_url: item.base_url, output_limit_field: item.output_limit_field || 'max_tokens', allow_insecure_loopback: Boolean(item.allow_insecure_loopback), has_api_key: item.has_api_key === true })) : [],
+      provider_agents: Array.isArray(value.provider_agents) ? value.provider_agents.map(item => ({ id: item.id, desc: item.desc, provider_id: item.provider_id, model: item.model, timeout: item.timeout, max_tokens: item.max_tokens ?? 4096 })) : [],
+      templates: Array.isArray(value.templates) ? value.templates.map(item => ({ id: item.id, provider_id: item.provider_id, model: item.model, desc: item.desc, enabled: item.enabled !== false, max_tokens: item.max_tokens ?? 4096 })) : [],
       approved_template_ids: Array.isArray(value.approved_template_ids) ? value.approved_template_ids : []
     };
   }
@@ -291,11 +325,18 @@
     updateAgentCatalog(state.agents);
     return state.registry;
   }
+  function serializeProvider(provider) {
+    const value = { id: provider.id, protocol: provider.protocol, base_url: provider.base_url,
+      allow_insecure_loopback: Boolean(provider.allow_insecure_loopback) };
+    if (provider.protocol === 'openai-chat-completions')
+      value.output_limit_field = provider.output_limit_field || 'max_tokens';
+    return value;
+  }
   async function saveRegistry(next, providerSecret = null) {
     const clean = normalizedRegistry(next);
-    const body = { providers: clean.providers.map(item => ({ id: item.id, protocol: item.protocol, base_url: item.base_url, allow_insecure_loopback: Boolean(item.allow_insecure_loopback) })),
-      provider_agents: clean.provider_agents.map(item => ({ id: item.id, desc: item.desc, provider_id: item.provider_id, model: item.model, timeout: item.timeout })),
-      templates: clean.templates.map(item => ({ id: item.id, provider_id: item.provider_id, model: item.model, desc: item.desc, enabled: item.enabled !== false })),
+    const body = { providers: clean.providers.map(serializeProvider),
+      provider_agents: clean.provider_agents.map(item => ({ id: item.id, desc: item.desc, provider_id: item.provider_id, model: item.model, timeout: item.timeout, max_tokens: item.max_tokens ?? 4096 })),
+      templates: clean.templates.map(item => ({ id: item.id, provider_id: item.provider_id, model: item.model, desc: item.desc, enabled: item.enabled !== false, max_tokens: item.max_tokens ?? 4096 })),
       approved_template_ids: clean.approved_template_ids };
     if (providerSecret && providerSecret.value) {
       const provider = body.providers.find(item => item.id === providerSecret.id);
@@ -323,6 +364,8 @@
     if (form.elements.enabled && values.enabled == null) form.elements.enabled.checked = true;
     form.elements.id.readOnly = Boolean(item);
     if (id === '#providerEditor') {
+      form.elements.output_limit_field.value = values.output_limit_field || 'max_tokens';
+      $('#outputTokenFieldRow').hidden = form.elements.protocol.value !== 'openai-chat-completions';
       $('#providerEditorTitle').textContent = title;
       const secretState = form.querySelector('[data-secret-state]');
       const envOnly = state.registry.secret_storage === 'env-reference-only';
@@ -363,6 +406,9 @@
     $('#settingsDialog').addEventListener('click', event => { if (event.target === $('#settingsDialog')) $('#settingsDialog').close(); });
     $$('.settings-tab').forEach(button => button.addEventListener('click', () => setSettingsTab(button.dataset.settingsTab)));
     $('#newProvider').addEventListener('click', () => showEditor('#providerEditor', '添加提供商'));
+    $('#providerEditor [name="protocol"]').addEventListener('change', event => {
+      $('#outputTokenFieldRow').hidden = event.target.value !== 'openai-chat-completions';
+    });
     $('#newAgent').addEventListener('click', () => { if (!state.registry.providers.length) { setSettingsTab('providers'); toast('请先添加一个提供商。'); return; } showEditor('#agentEditor', '添加 Agent'); });
     $('#newTemplate').addEventListener('click', () => { if (!state.registry.providers.length) { setSettingsTab('providers'); toast('请先添加一个提供商。'); return; } showEditor('#templateEditor', '添加子 Agent 模板'); });
     $$('.settings-list').forEach(list => list.addEventListener('click', registryAction));
@@ -383,7 +429,7 @@
     }));
     $('#providerEditor').addEventListener('submit', async event => {
       event.preventDefault(); const form = event.currentTarget, data = new FormData(form), id = String(data.get('id')).trim();
-    const value = { id, protocol: String(data.get('protocol')), base_url: String(data.get('base_url')).trim(), allow_insecure_loopback: form.elements.allow_insecure_loopback.checked };
+    const value = { id, protocol: String(data.get('protocol')), base_url: String(data.get('base_url')).trim(), output_limit_field: String(data.get('output_limit_field') || 'max_tokens'), allow_insecure_loopback: form.elements.allow_insecure_loopback.checked };
       const providers = [...state.registry.providers.filter(item => item.id !== id), { ...state.registry.providers.find(item => item.id === id), ...value }];
       const apiKey = String(data.get('api_key') || ''); const clearKey = form.elements.clear_api_key.checked; const submit = form.querySelector('[type=submit]'); submit.disabled = true;
       try { await saveRegistry({ ...state.registry, providers }, apiKey ? { id, value: apiKey } : clearKey ? { id, clear: true } : null); closeEditor(form); toast('提供商设置已保存。'); }
@@ -392,7 +438,7 @@
     });
     $('#agentEditor').addEventListener('submit', async event => {
       event.preventDefault(); const form = event.currentTarget, data = new FormData(form), id = String(data.get('id')).trim();
-      const value = { id, desc: String(data.get('desc')).trim(), provider_id: String(data.get('provider_id')), model: String(data.get('model')).trim(), timeout: Number(data.get('timeout')) };
+      const value = { id, desc: String(data.get('desc')).trim(), provider_id: String(data.get('provider_id')), model: String(data.get('model')).trim(), timeout: Number(data.get('timeout')), max_tokens: Number(data.get('max_tokens')) };
       const provider_agents = [...state.registry.provider_agents.filter(item => item.id !== id), value]; const submit = form.querySelector('[type=submit]'); submit.disabled = true;
       try { await saveRegistry({ ...state.registry, provider_agents }); closeEditor(form); toast('Agent 设置已保存。'); }
       catch (error) { showError(error); }
@@ -400,7 +446,7 @@
     });
     $('#templateEditor').addEventListener('submit', async event => {
       event.preventDefault(); const form = event.currentTarget, data = new FormData(form), id = String(data.get('id')).trim();
-      const value = { id, desc: String(data.get('desc')).trim(), provider_id: String(data.get('provider_id')), model: String(data.get('model')).trim(), enabled: form.elements.enabled.checked };
+      const value = { id, desc: String(data.get('desc')).trim(), provider_id: String(data.get('provider_id')), model: String(data.get('model')).trim(), enabled: form.elements.enabled.checked, max_tokens: Number(data.get('max_tokens')) };
       const templates = [...state.registry.templates.filter(item => item.id !== id), value];
       const approved = new Set(state.registry.approved_template_ids); if (value.enabled) approved.add(id); else approved.delete(id);
       const submit = form.querySelector('[type=submit]'); submit.disabled = true;
@@ -821,8 +867,15 @@
   }
   function startPolling() {
     clearInterval(state.timer);
+    if (!TOKEN) return;
     state.timer = setInterval(async () => { await refreshState(); await refreshRun(); }, 2500);
   }
 
-  updateToday(); initSettings(); bindEvents(); loadInitialData().then(startPolling);
+  updateToday(); initSettings(); bindEvents();
+  $('#tokenForm').addEventListener('submit', event => {
+    event.preventDefault();
+    if (setToken($('#tokenInput').value.trim())) loadInitialData().then(startPolling);
+    else $('#tokenError').textContent = '请输入有效的 64 位令牌。';
+  });
+  if (bootstrapToken()) loadInitialData().then(startPolling);
 })();
