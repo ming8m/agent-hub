@@ -82,7 +82,7 @@
     <div class="settings-layout">
       <nav class="settings-nav" aria-label="设置分类" role="tablist">
         <button class="settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="settingsHub" data-settings-tab="hub">协作设置</button>
-        <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsProviders" data-settings-tab="providers">提供商与模型</button>
+        <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsProviders" data-settings-tab="providers">模型服务</button>
         <button class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAgents" data-settings-tab="agents">Agent 与子 Agent</button>
       </nav>
       <div class="settings-content">
@@ -91,21 +91,21 @@
           <div id="hubSettingsMount"></div>
         </section>
         <section class="settings-pane" id="settingsProviders" role="tabpanel" hidden>
-          <div class="settings-section-intro"><div><h3>提供商与模型</h3><p>配置兼容 API 地址和默认模型。密钥只在此处输入，保存后不可读取。</p></div><button class="secondary-button" type="button" id="newProvider">添加提供商</button></div>
+          <div class="settings-section-intro"><div><h3>自定义模型服务</h3><p>接入任意支持下列请求格式的模型服务。协议只决定请求格式，不限制模型名称；同一服务可创建多个使用不同模型 ID 的 Agent。密钥保存后不可读取。</p></div><button class="secondary-button" type="button" id="newProvider">添加模型服务</button></div>
           <div class="settings-list" id="providerList" aria-live="polite"><div class="settings-empty">正在读取配置…</div></div>
           <form class="editor-card hidden" id="providerEditor" autocomplete="off">
-            <div class="editor-head"><div><span class="eyebrow">PROVIDER</span><h4 id="providerEditorTitle">添加提供商</h4></div><button class="iconbtn" type="button" data-cancel-provider aria-label="关闭">×</button></div>
+            <div class="editor-head"><div><span class="eyebrow">MODEL SERVICE</span><h4 id="providerEditorTitle">添加模型服务</h4></div><button class="iconbtn" type="button" data-cancel-provider aria-label="关闭">×</button></div>
             <div class="form-grid">
               <label class="form-field">标识符<input name="id" required maxlength="32" pattern="[A-Za-z0-9_-]{1,32}" placeholder="my-provider"></label>
-              <label class="form-field">接口协议<select name="protocol" required><option value="openai-chat-completions">OpenAI 兼容（Chat Completions）</option><option value="anthropic-messages">Anthropic Messages</option><option value="ollama-chat">Ollama Chat</option></select></label>
+              <label class="form-field">请求格式<select name="protocol" required><option value="openai-chat-completions">OpenAI 兼容 · Chat Completions</option><option value="anthropic-messages">Anthropic 兼容 · Messages</option><option value="ollama-chat">Ollama · Chat</option></select><small class="field-help">按服务文档选择兼容格式，与模型品牌无关。</small></label>
               <label class="form-field" id="outputTokenFieldRow">输出上限字段<select name="output_limit_field"><option value="max_tokens">max_tokens（通用兼容，默认）</option><option value="max_completion_tokens">max_completion_tokens（部分新模型）</option></select><small class="field-help">按目标服务要求选择；不会自动切换或重试。</small></label>
-              <label class="form-field wide">API 地址<input name="base_url" type="url" required placeholder="https://api.example.com/v1"><small class="field-help">填写服务根地址或完整 API 路径；协议会按所选兼容格式请求。</small></label>
+              <label class="form-field wide">API 地址<input name="base_url" type="url" required placeholder="https://api.example.com/custom/v1/chat/completions"><small class="field-help">优先从服务文档复制完整接口地址（/v1/chat/completions、/v1/messages 或 /api/chat）；可保留自定义前缀。填根地址时系统会追加路径；以 /v1 结尾则直接追加接口。不要带查询参数。</small></label>
               <label class="form-field check-field wide"><input name="allow_insecure_loopback" type="checkbox"> 允许不加密的本机回环地址（仅限本机 Ollama 等服务）</label>
-              <label class="form-field wide">API 密钥或环境变量引用<div class="secret-input"><input name="api_key" type="password" autocomplete="off" spellcheck="false" placeholder="API 密钥或 ${ENV:OPENAI_API_KEY}；留空则保留已保存值"><button type="button" class="reveal-secret" aria-label="显示输入内容" aria-pressed="false">显示</button></div><small class="field-help" data-secret-state>只作为输入发送；保存后不会回显。当前平台不支持受保护存储时，请使用 ${ENV:VARIABLE_NAME}。</small></label>
+              <label class="form-field wide">API 密钥或环境变量引用<div class="secret-input"><input name="api_key" type="password" autocomplete="off" spellcheck="false" placeholder="API 密钥或 ${ENV:MODEL_API_KEY}；留空则保留已保存值"><button type="button" class="reveal-secret" aria-label="显示输入内容" aria-pressed="false">显示</button></div><small class="field-help" data-secret-state>只作为输入发送；保存后不会回显。当前平台不支持受保护存储时，请使用 ${ENV:VARIABLE_NAME}。</small></label>
               <label class="form-field check-field wide"><input name="clear_api_key" type="checkbox" disabled> 清除已保存的密钥</label>
-              <label class="form-field wide">默认模型<input name="model" maxlength="120" placeholder="例如：model-name"></label>
+              <label class="form-field wide">默认模型 ID（可选）<input name="default_model" maxlength="500" spellcheck="false" placeholder="例如：team/model-name:version"><small class="field-help">填写服务文档中的精确模型 ID；允许斜杠、冒号。新建 Agent 和模板选择此服务时会预填，仍可分别修改。</small></label>
             </div>
-            <div class="editor-actions"><button class="secondary-button" type="button" data-cancel-provider>取消</button><button class="primary-button" type="submit">保存提供商</button></div>
+            <div class="editor-actions"><button class="secondary-button" type="button" data-cancel-provider>取消</button><button class="primary-button" type="submit">保存模型服务</button></div>
           </form>
         </section>
         <section class="settings-pane" id="settingsAgents" role="tabpanel" hidden>
@@ -117,8 +117,8 @@
             <div class="form-grid">
               <label class="form-field">Agent 标识符<input name="id" required maxlength="32" pattern="[A-Za-z0-9_-]{1,32}" placeholder="researcher"></label>
               <label class="form-field">显示名称<input name="desc" required maxlength="120" placeholder="研究 Agent"></label>
-              <label class="form-field">提供商<select name="provider_id" required><option value="">先添加提供商</option></select></label>
-              <label class="form-field">模型<input name="model" required maxlength="120" placeholder="model-name"><small class="field-help">填写提供商支持的模型标识。</small></label>
+              <label class="form-field">模型服务<select name="provider_id" required><option value="">先添加模型服务</option></select></label>
+              <label class="form-field">模型 ID<input name="model" required maxlength="500" spellcheck="false" placeholder="team/model-name:version"><small class="field-help">填写服务文档中的精确模型 ID；可包含斜杠、冒号。选择服务后可改用其他模型。</small></label>
               <label class="form-field">超时（秒）<input name="timeout" type="number" min="1" max="86400" value="600" required></label>
               <label class="form-field">最大输出 tokens<input name="max_tokens" type="number" min="1" max="100000" step="1" value="4096" required></label>
             </div>
@@ -129,8 +129,8 @@
             <div class="form-grid">
               <label class="form-field">模板标识符<input name="id" required maxlength="32" pattern="[A-Za-z0-9_-]{1,32}" placeholder="reviewer"></label>
               <label class="form-field">显示名称<input name="desc" required maxlength="120" placeholder="Reviewer"></label>
-              <label class="form-field">提供商<select name="provider_id" required><option value="">选择提供商</option></select></label>
-              <label class="form-field">模型<input name="model" required maxlength="120" placeholder="model-name"><small class="field-help">填写此子 Agent 模板要使用的模型标识。</small></label>
+              <label class="form-field">模型服务<select name="provider_id" required><option value="">选择模型服务</option></select></label>
+              <label class="form-field">模型 ID<input name="model" required maxlength="500" spellcheck="false" placeholder="team/model-name:version"><small class="field-help">填写服务文档中的精确模型 ID；可包含斜杠、冒号。</small></label>
               <label class="form-field">最大输出 tokens<input name="max_tokens" type="number" min="1" max="100000" step="1" value="4096" required></label>
               <label class="form-field check-field"><input name="enabled" type="checkbox" checked> 启用并加入批准列表</label>
             </div>

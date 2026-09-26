@@ -163,7 +163,7 @@ class HubApiTests(unittest.TestCase):
 
     def test_mixed_provider_registry_preserves_output_limits_on_save(self):
         payload = {"providers": [
-            {"id": "openai", "protocol": "openai-chat-completions", "base_url": "https://example.invalid/v1", "output_limit_field": "max_completion_tokens"},
+            {"id": "openai", "protocol": "openai-chat-completions", "base_url": "https://example.invalid/v1", "output_limit_field": "max_completion_tokens", "default_model": "vendor/default:2026"},
             {"id": "anthropic", "protocol": "anthropic-messages", "base_url": "https://example.invalid/v1"},
             {"id": "ollama", "protocol": "ollama-chat", "base_url": "https://example.invalid"}],
             "provider_agents": [{"id": "api_agent", "desc": "Synthetic", "provider_id": "openai", "model": "synthetic-model", "timeout": 30, "max_tokens": 8192}],
@@ -176,10 +176,55 @@ class HubApiTests(unittest.TestCase):
         self.assertEqual(8192, loaded["provider_agents"][0]["max_tokens"])
         self.assertEqual(2048, loaded["templates"][0]["max_tokens"])
         self.assertEqual("max_completion_tokens", loaded["providers"][0]["output_limit_field"])
+        self.assertEqual("vendor/default:2026", loaded["providers"][0]["default_model"])
+        self.assertEqual("", loaded["providers"][1]["default_model"])
+        self.assertEqual("synthetic-model", loaded["provider_agents"][0]["model"])
+        self.assertEqual("synthetic-model", loaded["templates"][0]["model"])
         self.assertNotIn("output_limit_field", loaded["providers"][1])
         self.assertNotIn("output_limit_field", loaded["providers"][2])
         status, _ = self.request("PUT", "/api/config/agents", payload)
         self.assertEqual(200, status)
+
+        reopened = hub.AgentHub(home=self.store.home, agent_loader=lambda: self.registry,
+            agent_config_loader=lambda: self.registry)
+        try:
+            self.assertEqual("vendor/default:2026", reopened.get_agent_registry()["providers"][0]["default_model"])
+        finally:
+            reopened.close()
+
+    def test_provider_default_model_validation_and_independent_agent_models(self):
+        payload = {"providers": [{"id": "custom", "protocol": "openai-chat-completions",
+            "base_url": "https://example.invalid/prefix/v1", "default_model": "vendor/default:v1"}],
+            "provider_agents": [{"id": "worker", "provider_id": "custom", "model": "vendor/worker:v2"}],
+            "templates": [{"id": "child", "provider_id": "custom", "model": "vendor/child:v3"}],
+            "approved_template_ids": []}
+        status, saved = self.request("PUT", "/api/config/agents", payload)
+        self.assertEqual(200, status)
+        self.assertEqual("vendor/default:v1", saved["providers"][0]["default_model"])
+        self.assertEqual("vendor/worker:v2", saved["provider_agents"][0]["model"])
+        self.assertEqual("vendor/child:v3", saved["templates"][0]["model"])
+        payload["providers"][0]["default_model"] = "vendor/changed:v4"
+        status, saved = self.request("PUT", "/api/config/agents", payload)
+        self.assertEqual(200, status)
+        self.assertEqual("vendor/worker:v2", saved["provider_agents"][0]["model"])
+        self.assertEqual("vendor/child:v3", saved["templates"][0]["model"])
+        for invalid in (None, 42, "   ", "x" * 501):
+            with self.subTest(default_model=invalid):
+                payload["providers"][0]["default_model"] = invalid
+                status, result = self.request("PUT", "/api/config/agents", payload)
+                self.assertEqual(400, status)
+                self.assertEqual("invalid_request", result["error"])
+        payload["providers"][0]["default_model"] = ""
+        status, saved = self.request("PUT", "/api/config/agents", payload)
+        self.assertEqual(200, status)
+        self.assertEqual("", saved["providers"][0]["default_model"])
+        payload["providers"][0].pop("default_model")
+        status, saved = self.request("PUT", "/api/config/agents", payload)
+        self.assertEqual(200, status)
+        self.assertEqual("", saved["providers"][0]["default_model"])
+        payload["provider_agents"][0].pop("model")
+        status, _ = self.request("PUT", "/api/config/agents", payload)
+        self.assertEqual(400, status)
 
     def test_compact_state_skips_large_or_damaged_legacy_log(self):
         log = Path(self.temp.name) / "chat.log"
@@ -290,8 +335,9 @@ class HubApiTests(unittest.TestCase):
             with patch.dict(os.environ, {env_name: secret}, clear=False):
                 status, saved = self.request("PUT", "/api/config/agents", {
                     "providers": [{"id": "custom_endpoint", "protocol": "openai-chat-completions",
-                        "base_url": f"http://127.0.0.1:{upstream.server_port}/v1",
-                        "allow_insecure_loopback": True, "api_key": "${ENV:" + env_name + "}"}],
+                        "base_url": f"http://127.0.0.1:{upstream.server_port}/tenant/v1/chat/completions",
+                        "allow_insecure_loopback": True, "default_model": "vendor/default:unused",
+                        "api_key": "${ENV:" + env_name + "}"}],
                     "provider_agents": [
                         {"id": "coordinator", "desc": "Synthetic coordinator", "provider_id": "custom_endpoint",
                             "model": "vendor/custom-planner:rc1", "timeout": 20},
@@ -305,6 +351,7 @@ class HubApiTests(unittest.TestCase):
                 self.assertNotIn(secret, serialized)
                 self.assertNotIn('"api_key"', serialized)
                 self.assertTrue(saved["providers"][0]["has_api_key"])
+                self.assertEqual("vendor/default:unused", saved["providers"][0]["default_model"])
                 stored = json.loads(self.store._registry_path.read_text(encoding="utf-8"))
                 self.assertEqual("${ENV:" + env_name + "}", stored["providers"][0]["api_key"])
                 self.assertNotIn(secret, self.store._registry_path.read_text(encoding="utf-8"))
@@ -336,6 +383,8 @@ class HubApiTests(unittest.TestCase):
                 self.assertTrue(any(event.get("from_agent_id") == "child_one" and event.get("to_agent_id") == "peer"
                     for event in events))
                 calls = upstream.requests
+                self.assertTrue(calls)
+                self.assertTrue(all(request[0] == "/tenant/v1/chat/completions" for request in calls))
                 self.assertEqual({"vendor/custom-planner:rc1", "vendor/custom-child:7", "vendor/custom-peer:2"},
                     {request[2]["model"] for request in calls if request[2]["model"] != "vendor/custom-planner:rc1" or "UNTRUSTED_INPUT_JSON" in request[2]["messages"][0]["content"]})
                 self.assertTrue(all(request[1].get("Authorization") == "Bearer " + secret for request in calls))
@@ -354,8 +403,12 @@ class HubApiTests(unittest.TestCase):
         # Root and /v1 map to the same adapter endpoint, so the saved key can
         # be retained when only this equivalent spelling changes.
         self.store.put_agent_registry(registry("https://example.invalid/v1"))
+        self.assertTrue(self.store.get_agent_registry()["providers"][0]["has_api_key"])
+        self.assertNotIn("api_key", self.store.get_agent_registry()["providers"][0])
         with self.assertRaisesRegex(hub.HubError, "Re-enter or clear the credential"):
             self.store.put_agent_registry(registry("https://example.invalid/tenant-b/v1"))
+        self.store.put_agent_registry(registry("https://example.invalid/tenant-b/v1", None))
+        self.assertFalse(self.store.get_agent_registry()["providers"][0]["has_api_key"])
 
     def test_orchestrated_auto_preview_approval_and_invalid_plan_isolation(self):
         status, result = self.request("PUT", "/api/config/hub", {

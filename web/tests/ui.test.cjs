@@ -66,6 +66,55 @@ test('registry normalization and save payload retain agent and template output l
   assert.match(html, /id="templateEditor"[\s\S]*name="max_tokens"/);
 });
 
+test('default model round trips through registry save without exposing secrets', async () => {
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(web, 'index.html'), 'utf8');
+  const normalizeStart = app.indexOf('  function normalizedRegistry(value = {})');
+  const normalizeEnd = app.indexOf('  function updateAgentCatalog', normalizeStart);
+  const saveStart = app.indexOf('  function serializeProvider(provider)');
+  const saveEnd = app.indexOf('  function setSettingsTab', saveStart);
+  const requests = [];
+  const context = {
+    registryPath: '/api/config/agents',
+    state: { registry: {}, agents: [] },
+    api: async (_path, options) => {
+      if (options) { requests.push(JSON.parse(options.body)); return {}; }
+      return { providers: [{ id: 'custom', protocol: 'openai-chat-completions', base_url: 'https://example.invalid/prefix/v1', default_model: 'team/model:2026', has_api_key: true }] };
+    },
+    renderRegistry() {}, updateAgentCatalog() {}, refreshState: async () => {}
+  };
+  vm.runInNewContext(`${app.slice(normalizeStart, normalizeEnd)} ${app.slice(saveStart, saveEnd)} globalThis.saveRegistry = saveRegistry;`, context);
+  await context.saveRegistry({ providers: [{ id: 'custom', protocol: 'openai-chat-completions', base_url: 'https://example.invalid/prefix/v1', default_model: 'team/model:2026', has_api_key: true }] });
+  assert.equal(requests[0].providers[0].default_model, 'team/model:2026');
+  assert.equal(Object.hasOwn(requests[0].providers[0], 'api_key'), false);
+  assert.equal(context.state.registry.providers[0].default_model, 'team/model:2026');
+  assert.match(html, /id="providerEditor"[\s\S]*name="default_model" maxlength="500"/);
+});
+
+test('provider model prefill follows new forms but preserves explicit and existing models', () => {
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const start = app.indexOf('  function prefillModelFromProvider(form)');
+  const end = app.indexOf('  function showEditor', start);
+  const context = { state: { registry: { providers: [
+    { id: 'one', default_model: 'team/one:v1' }, { id: 'two', default_model: 'team/two:v2' }
+  ] } } };
+  vm.runInNewContext(`${app.slice(start, end)} globalThis.prefill = prefillModelFromProvider;`, context);
+  const form = { dataset: { modelManual: 'false' }, elements: { provider_id: { value: 'one' }, model: { value: '' } } };
+  context.prefill(form);
+  assert.equal(form.elements.model.value, 'team/one:v1');
+  form.elements.provider_id.value = 'two';
+  context.prefill(form);
+  assert.equal(form.elements.model.value, 'team/two:v2');
+  form.elements.model.value = 'other/custom:latest';
+  form.dataset.modelManual = 'true';
+  form.elements.provider_id.value = 'one';
+  context.prefill(form);
+  assert.equal(form.elements.model.value, 'other/custom:latest');
+  form.elements.model.value = 'existing/model';
+  context.prefill(form);
+  assert.equal(form.elements.model.value, 'existing/model');
+});
+
 test('service restart interruption is terminal and clearly labeled', () => {
   assert.equal(status.isTerminal('interrupted'), true);
   assert.equal(status.label({ status: 'interrupted' }), '服务重启中断');

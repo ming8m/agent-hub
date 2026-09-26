@@ -476,7 +476,7 @@ class AgentHub:
         for row in registry.get("providers", []):
             public = {"id": row.get("id"), "protocol": row.get("protocol"),
                 "base_url": row.get("base_url"), "allow_insecure_loopback": row.get("allow_insecure_loopback", False),
-                "has_api_key": bool(row.get("api_key"))}
+                "default_model": row.get("default_model", ""), "has_api_key": bool(row.get("api_key"))}
             if row.get("protocol") == "openai-chat-completions":
                 public["output_limit_field"] = row.get("output_limit_field", "max_tokens")
             providers.append(public)
@@ -509,7 +509,7 @@ class AgentHub:
         provider_rows, provider_ids = [], set()
         import hub_providers
         for row in incoming["providers"]:
-            if not isinstance(row, dict) or set(row) - {"id", "protocol", "base_url", "api_key", "allow_insecure_loopback", "output_limit_field"}:
+            if not isinstance(row, dict) or set(row) - {"id", "protocol", "base_url", "api_key", "allow_insecure_loopback", "output_limit_field", "default_model"}:
                 raise HubError("invalid_request", "Provider contains unsupported fields")
             ident, protocol, url = row.get("id"), row.get("protocol"), row.get("base_url")
             if not isinstance(ident, str) or not AGENT_RE.fullmatch(ident) or ident in provider_ids:
@@ -525,6 +525,10 @@ class AgentHub:
             if output_limit_field not in ("max_tokens", "max_completion_tokens") or (
                     "output_limit_field" in row and protocol != "openai-chat-completions"):
                 raise HubError("invalid_request", "output_limit_field is invalid for this protocol")
+            default_model = row.get("default_model", "")
+            if (not isinstance(default_model, str) or len(default_model) > 500 or
+                    (default_model and not default_model.strip())):
+                raise HubError("invalid_request", "Provider default_model must be empty or a non-blank identifier up to 500 characters")
             previous = previous_providers.get(ident, {})
             def origin(protocol_value, url_value):
                 try:
@@ -546,7 +550,8 @@ class AgentHub:
                 secret = None
             elif not isinstance(secret, str) or len(secret) > 8192 or any(ord(char) < 32 or ord(char) == 127 for char in secret):
                 raise HubError("invalid_request", "api_key must be a bounded credential without control characters")
-            clean = {"id": ident, "protocol": protocol, "base_url": url.rstrip("/"), "allow_insecure_loopback": allow_http}
+            clean = {"id": ident, "protocol": protocol, "base_url": url.rstrip("/"),
+                "allow_insecure_loopback": allow_http, "default_model": default_model}
             if protocol == "openai-chat-completions":
                 clean["output_limit_field"] = output_limit_field
             if secret is not None:

@@ -85,8 +85,8 @@
         storage_error: '任务存储暂时不可用。',
         not_found: '目标记录不存在或已被清理。',
         conflict: '请求状态已变化，请刷新后重试。',
-        provider_in_use: '此提供商仍被 Agent 或模板引用，请先移除相关引用。',
-        registry_invalid: safeBackendMessage(payload.message) || '提供商或 Agent 设置无效。',
+        provider_in_use: '此模型服务仍被 Agent 或模板引用，请先移除相关引用。',
+        registry_invalid: safeBackendMessage(payload.message) || '模型服务或 Agent 设置无效。',
         secure_secret_required: '此平台不接受直接保存密钥。请先设置环境变量，再填写 ${ENV:VARIABLE_NAME} 引用并重试。'
       };
       const issue = new Error(messages[payload?.error] || safeBackendMessage(payload?.message) || `请求失败（HTTP ${response.status}）。`);
@@ -146,7 +146,7 @@
     $('#agentCount').textContent = state.agents.length;
     if (!state.agents.length) {
       addText(list, 'div', 'empty-side', '尚无已注册 Agent');
-      addText(picks, 'span', 'muted', '先添加兼容 API 提供商，再创建 Agent。');
+      addText(picks, 'span', 'muted', '先添加自定义模型服务，再创建 Agent。');
       addSetupAction(picks); addSetupAction(list);
       return;
     }
@@ -233,7 +233,7 @@
     return {
       secret_storage: value.secret_storage === 'env-reference-only' ? 'env-reference-only' : 'dpapi-or-env',
       agents: Array.isArray(value.agents) ? value.agents.map(item => ({ id: item.id, desc: item.desc, kind: item.kind })) : [],
-      providers: Array.isArray(value.providers) ? value.providers.map(item => ({ id: item.id, protocol: item.protocol, base_url: item.base_url, output_limit_field: item.output_limit_field || 'max_tokens', allow_insecure_loopback: Boolean(item.allow_insecure_loopback), has_api_key: item.has_api_key === true })) : [],
+      providers: Array.isArray(value.providers) ? value.providers.map(item => ({ id: item.id, protocol: item.protocol, base_url: item.base_url, default_model: item.default_model || '', output_limit_field: item.output_limit_field || 'max_tokens', allow_insecure_loopback: Boolean(item.allow_insecure_loopback), has_api_key: item.has_api_key === true })) : [],
       provider_agents: Array.isArray(value.provider_agents) ? value.provider_agents.map(item => ({ id: item.id, desc: item.desc, provider_id: item.provider_id, model: item.model, timeout: item.timeout, max_tokens: item.max_tokens ?? 4096 })) : [],
       templates: Array.isArray(value.templates) ? value.templates.map(item => ({ id: item.id, provider_id: item.provider_id, model: item.model, desc: item.desc, enabled: item.enabled !== false, max_tokens: item.max_tokens ?? 4096 })) : [],
       approved_template_ids: Array.isArray(value.approved_template_ids) ? value.approved_template_ids : []
@@ -249,7 +249,7 @@
   }
   function providersForSelect(select, selected = '') {
     select.replaceChildren();
-    const empty = document.createElement('option'); empty.value = ''; empty.textContent = state.registry.providers.length ? '选择提供商' : '先添加提供商'; select.append(empty);
+    const empty = document.createElement('option'); empty.value = ''; empty.textContent = state.registry.providers.length ? '选择模型服务' : '先添加模型服务'; select.append(empty);
     for (const provider of state.registry.providers) {
       const option = document.createElement('option'); option.value = provider.id; option.textContent = provider.id; select.append(option);
     }
@@ -262,22 +262,22 @@
   function renderRegistry() {
     const providers = state.registry.providers, agents = state.registry.provider_agents, templates = state.registry.templates;
     const providerList = $('#providerList'); providerList.replaceChildren();
-    if (!providers.length) addText(providerList, 'div', 'settings-empty', '尚未配置提供商。添加兼容 API 的地址和协议后，即可创建 Agent。');
+    if (!providers.length) addText(providerList, 'div', 'settings-empty', '尚未配置自定义模型服务。填写兼容 API 的地址和请求格式后，即可创建 Agent。');
     for (const provider of providers) {
       const row = document.createElement('article'); row.className = 'config-row';
       const main = document.createElement('div'); main.className = 'config-row-main';
-      addText(main, 'div', 'config-row-title', provider.id || '未命名提供商');
-      addText(main, 'div', 'config-row-meta', `${provider.protocol || '协议未配置'} · ${provider.base_url || 'API 地址未配置'} · ${provider.has_api_key ? '密钥已保存' : '尚未配置密钥'}${provider.allow_insecure_loopback ? ' · 本机 HTTP' : ''}`);
+      addText(main, 'div', 'config-row-title', provider.id || '未命名模型服务');
+      addText(main, 'div', 'config-row-meta', `${provider.protocol || '协议未配置'} · ${provider.base_url || 'API 地址未配置'} · 默认模型：${provider.default_model || '未设置'} · ${provider.has_api_key ? '密钥已保存' : '尚未配置密钥'}${provider.allow_insecure_loopback ? ' · 本机 HTTP' : ''}`);
       const actions = document.createElement('div'); actions.className = 'config-row-actions';
       actions.append(rowAction('编辑', 'edit-provider', provider.id));
       const referenced = agents.some(agent => agent.provider_id === provider.id) || templates.some(template => template.provider_id === provider.id);
       actions.append(rowAction('移除', 'remove-provider', provider.id, referenced));
-      if (referenced) { const help = addText(actions, 'span', 'field-help', '仍被引用'); help.title = '先移除引用此提供商的 Agent 和模板'; }
+      if (referenced) { const help = addText(actions, 'span', 'field-help', '仍被引用'); help.title = '先移除引用此模型服务的 Agent 和模板'; }
       row.append(main, actions); providerList.append(row);
     }
     const agentList = $('#agentConfigList'); agentList.replaceChildren();
     const cliAgents = state.agents.filter(agent => agent.kind === 'cli');
-    if (!agents.length && !cliAgents.length) addText(agentList, 'div', 'settings-empty', '尚未创建 Agent。添加提供商后，可创建普通 Agent，并在协作设置中选择主 Agent。');
+    if (!agents.length && !cliAgents.length) addText(agentList, 'div', 'settings-empty', '尚未创建 Agent。添加模型服务后，可创建普通 Agent，并在协作设置中选择主 Agent。');
     for (const agent of cliAgents) {
       const row = document.createElement('article'); row.className = 'config-row';
       const main = document.createElement('div'); main.className = 'config-row-main';
@@ -289,7 +289,7 @@
       const row = document.createElement('article'); row.className = 'config-row';
       const main = document.createElement('div'); main.className = 'config-row-main';
       addText(main, 'div', 'config-row-title', agent.desc || agent.id);
-      addText(main, 'div', 'config-row-meta', `${agent.id} · ${agent.provider_id || '未关联提供商'} · ${agent.model || '未指定模型'} · 超时 ${agent.timeout ?? 600} 秒`);
+      addText(main, 'div', 'config-row-meta', `${agent.id} · ${agent.provider_id || '未关联模型服务'} · ${agent.model || '未指定模型'} · 超时 ${agent.timeout ?? 600} 秒`);
       const badge = addText(row, 'span', 'config-row-status enabled', '可用');
       const actions = document.createElement('div'); actions.className = 'config-row-actions';
       actions.append(rowAction('编辑', 'edit-agent', agent.id));
@@ -307,7 +307,7 @@
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = approved.has(template.id) && template.enabled !== false;
       checkbox.dataset.templateApproval = template.id; checkbox.disabled = template.enabled === false;
       const name = addText(label, 'span', 'template-name', template.desc || template.id);
-      const meta = addText(label, 'span', 'template-meta', `${template.provider_id || '无提供商'} · ${template.model || '无模型'}`);
+      const meta = addText(label, 'span', 'template-meta', `${template.provider_id || '无模型服务'} · ${template.model || '无模型'}`);
       label.prepend(checkbox); row.append(label);
       addText(row, 'span', 'config-row-status', template.enabled === false ? '已停用' : checkbox.checked ? '已批准' : '待批准');
       const actions = document.createElement('div'); actions.className = 'config-row-actions';
@@ -326,7 +326,7 @@
     return state.registry;
   }
   function serializeProvider(provider) {
-    const value = { id: provider.id, protocol: provider.protocol, base_url: provider.base_url,
+    const value = { id: provider.id, protocol: provider.protocol, base_url: provider.base_url, default_model: provider.default_model || '',
       allow_insecure_loopback: Boolean(provider.allow_insecure_loopback) };
     if (provider.protocol === 'openai-chat-completions')
       value.output_limit_field = provider.output_limit_field || 'max_tokens';
@@ -355,6 +355,11 @@
     $$('.settings-tab').forEach(button => { const selected = button.dataset.settingsTab === name; button.classList.toggle('active', selected); button.setAttribute('aria-selected', String(selected)); });
     $$('.settings-pane').forEach(pane => { const selected = pane.id === `settings${name[0].toUpperCase()}${name.slice(1)}`; pane.hidden = !selected; pane.classList.toggle('active', selected); });
   }
+  function prefillModelFromProvider(form) {
+    if (form.dataset.modelManual === 'true') return;
+    const provider = state.registry.providers.find(item => item.id === form.elements.provider_id.value);
+    form.elements.model.value = provider?.default_model || '';
+  }
   function showEditor(id, title, item = null) {
     const form = $(id); form.reset(); form.classList.remove('hidden');
     const values = item || {};
@@ -378,7 +383,11 @@
     } else if (id === '#agentEditor') $('#agentEditorTitle').textContent = title;
     else $('#templateEditorTitle').textContent = title;
     const providerSelect = form.elements.provider_id;
-    if (providerSelect) providersForSelect(providerSelect, values.provider_id || '');
+    if (providerSelect) {
+      providersForSelect(providerSelect, values.provider_id || '');
+      form.dataset.modelManual = item ? 'true' : 'false';
+      if (!item) prefillModelFromProvider(form);
+    }
     form.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     const focusable = form.querySelector('input:not([type=checkbox]),select,textarea'); focusable?.focus({ preventScroll: true });
   }
@@ -386,7 +395,7 @@
   async function registryAction(event) {
     const button = event.target.closest('[data-registry-action]'); if (!button) return;
     const { registryAction: action, registryId: id } = button.dataset;
-    if (action === 'edit-provider') { const item = state.registry.providers.find(value => value.id === id); if (item) showEditor('#providerEditor', '编辑提供商', item); return; }
+    if (action === 'edit-provider') { const item = state.registry.providers.find(value => value.id === id); if (item) showEditor('#providerEditor', '编辑模型服务', item); return; }
     if (action === 'edit-agent') { const item = state.registry.provider_agents.find(value => value.id === id); if (item) showEditor('#agentEditor', '编辑 Agent', item); return; }
     if (action === 'edit-template') { const item = state.registry.templates.find(value => value.id === id); if (item) showEditor('#templateEditor', '编辑子 Agent 模板', item); return; }
     const next = normalizedRegistry(state.registry);
@@ -405,12 +414,16 @@
     $('#closeSettings').addEventListener('click', () => $('#settingsDialog').close());
     $('#settingsDialog').addEventListener('click', event => { if (event.target === $('#settingsDialog')) $('#settingsDialog').close(); });
     $$('.settings-tab').forEach(button => button.addEventListener('click', () => setSettingsTab(button.dataset.settingsTab)));
-    $('#newProvider').addEventListener('click', () => showEditor('#providerEditor', '添加提供商'));
+    $('#newProvider').addEventListener('click', () => showEditor('#providerEditor', '添加模型服务'));
     $('#providerEditor [name="protocol"]').addEventListener('change', event => {
       $('#outputTokenFieldRow').hidden = event.target.value !== 'openai-chat-completions';
     });
-    $('#newAgent').addEventListener('click', () => { if (!state.registry.providers.length) { setSettingsTab('providers'); toast('请先添加一个提供商。'); return; } showEditor('#agentEditor', '添加 Agent'); });
-    $('#newTemplate').addEventListener('click', () => { if (!state.registry.providers.length) { setSettingsTab('providers'); toast('请先添加一个提供商。'); return; } showEditor('#templateEditor', '添加子 Agent 模板'); });
+    $('#newAgent').addEventListener('click', () => { if (!state.registry.providers.length) { setSettingsTab('providers'); toast('请先添加一个模型服务。'); return; } showEditor('#agentEditor', '添加 Agent'); });
+    $('#newTemplate').addEventListener('click', () => { if (!state.registry.providers.length) { setSettingsTab('providers'); toast('请先添加一个模型服务。'); return; } showEditor('#templateEditor', '添加子 Agent 模板'); });
+    for (const form of [$('#agentEditor'), $('#templateEditor')]) {
+      form.elements.provider_id.addEventListener('change', () => prefillModelFromProvider(form));
+      form.elements.model.addEventListener('input', () => { form.dataset.modelManual = 'true'; });
+    }
     $$('.settings-list').forEach(list => list.addEventListener('click', registryAction));
     $('#templateList').addEventListener('click', registryAction);
     $('#templateList').addEventListener('change', async event => {
@@ -429,10 +442,10 @@
     }));
     $('#providerEditor').addEventListener('submit', async event => {
       event.preventDefault(); const form = event.currentTarget, data = new FormData(form), id = String(data.get('id')).trim();
-    const value = { id, protocol: String(data.get('protocol')), base_url: String(data.get('base_url')).trim(), output_limit_field: String(data.get('output_limit_field') || 'max_tokens'), allow_insecure_loopback: form.elements.allow_insecure_loopback.checked };
+    const value = { id, protocol: String(data.get('protocol')), base_url: String(data.get('base_url')).trim(), default_model: String(data.get('default_model') || '').trim(), output_limit_field: String(data.get('output_limit_field') || 'max_tokens'), allow_insecure_loopback: form.elements.allow_insecure_loopback.checked };
       const providers = [...state.registry.providers.filter(item => item.id !== id), { ...state.registry.providers.find(item => item.id === id), ...value }];
       const apiKey = String(data.get('api_key') || ''); const clearKey = form.elements.clear_api_key.checked; const submit = form.querySelector('[type=submit]'); submit.disabled = true;
-      try { await saveRegistry({ ...state.registry, providers }, apiKey ? { id, value: apiKey } : clearKey ? { id, clear: true } : null); closeEditor(form); toast('提供商设置已保存。'); }
+      try { await saveRegistry({ ...state.registry, providers }, apiKey ? { id, value: apiKey } : clearKey ? { id, clear: true } : null); closeEditor(form); toast('模型服务设置已保存。'); }
       catch (error) { showError(error); }
       finally { submit.disabled = false; }
     });
