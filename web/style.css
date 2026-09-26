@@ -3,7 +3,7 @@
 }
 body {
   margin: 0;
-  font: 14px "DM Sans","Segoe UI","Microsoft YaHei",sans-serif;
+  font: 16px "Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
 }
 button,textarea {
   font: inherit;
@@ -39,15 +39,15 @@ button {
   border-radius: 10px;
   display: grid;
   place-items: center;
-  font: 800 16px Manrope;
+  font: 700 16px "Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
 }
 .brand b {
   display: block;
-  font: 700 14px Manrope;
+  font: 650 16px "Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
 }
 .brand small,.workspace small,.agent small,.lead-name small,.health small,.profile small {
   display: block;
-  font-size: 11px;
+  font-size: 14px;
   margin-top: 3px;
 }
 .iconbtn {
@@ -77,14 +77,14 @@ button {
   place-items: center;
 }
 .workspace b,.lead-name b,.agent b,.health b,.profile b {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
 }
 .chev {
   margin-left: auto;
 }
 .section-label {
-  font-size: 10px;
+  font-size: 13px;
   letter-spacing: .12em;
   text-transform: uppercase;
   padding: 0 8px 10px;
@@ -129,12 +129,12 @@ button {
 .mode-symbol.purple {
 }
 .mode-option b {
-  font-size: 11px;
+  font-size: 14px;
   display: block;
 }
 .mode-option small {
   display: block;
-  font-size: 10px;
+  font-size: 13px;
   margin-top: 3px;
 }
 .radio {
@@ -155,14 +155,14 @@ button {
   border-radius: 10px;
 }
 .lead-label {
-  font-size: 10px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 9px;
 }
 .state-pill {
-  font-size: 9px;
+  font-size: 13px;
   padding: 4px 6px;
   border-radius: 5px;
   letter-spacing: 0;
@@ -185,7 +185,7 @@ button {
   text-align: left;
 }
 .lead-note {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
   padding: 8px 2px 0;
 }
@@ -208,7 +208,7 @@ button {
   border: 0;
   border-radius: 6px;
   padding: 8px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .select-menu button:hover,.route-menu button:hover {
 }
@@ -242,7 +242,7 @@ button {
   flex: 1;
 }
 .agent small {
-  font-size: 10px;
+  font-size: 13px;
 }
 .avatar {
   width: 31px;
@@ -257,7 +257,7 @@ button {
   width: 21px;
   height: 21px;
   border-radius: 7px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .violet {
 }
@@ -272,7 +272,7 @@ button {
 .userava {
 }
 .count {
-  font-size: 10px;
+  font-size: 13px;
   padding: 3px 6px;
   border-radius: 6px;
 }
@@ -304,7 +304,7 @@ button {
   border-radius: 7px;
 }
 .health small,.profile small {
-  font-size: 10px;
+  font-size: 13px;
 }
 .more {
   margin-left: auto;
@@ -320,7 +320,7 @@ button {
   flex: 1;
 }
 .profile .iconbtn {
-  font-size: 15px;
+  font-size: 16px;
 }
 .main {
   flex: 1;
@@ -338,7 +338,7 @@ button {
   padding: 0 39px;
 }
 .crumb {
-  font-size: 11px;
+  font-size: 14px;
 }
 .crumb .slash {
   padding: 0 10px;
@@ -352,10 +352,10 @@ button {
   gap: 15px;
 }
 .sync {
-  font-size: 10px;
+  font-size: 13px;
 }
 .help {
-  font-size: 10px;
+  font-size: 13px;
   border: 0;
 }
 .content {
@@ -371,7 +371,7 @@ button {
   margin-bottom: 19px;
 }
 .eyebrow {
-  font-size: 9px;
+  font-size: 13px;
   letter-spacing: .15em;
   font-weight: 600;
 }
@@ -385,17 +385,17 @@ h1 {
 }
 .heading p {
   margin: 0;
-  font-size: 11px;
+  font-size: 14px;
 }
 .newtask {
   border: 0;
   border-radius: 8px;
   padding: 10px 14px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
 }
 .newtask span {
-  font-size: 15px;
+  font-size: 16px;
   margin-right: 5px;
 }
 .task-card {
@@ -422,13 +422,13 @@ h1 {
   place-items: center;
 }
 .task-kicker {
-  font-size: 9px;
+  font-size: 13px;
 }
 .task-id {
   margin-left: 5px;
 }
 .task-card h2 {
-  font-size: 13px;
+  font-size: 14px;
   margin: 4px 0 0;
   font-weight: 600;
 }
@@ -441,7 +441,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .lead-chip {
   display: flex;
@@ -469,7 +469,7 @@ h1 {
 .progress-title {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 13px;
   margin-bottom: 7px;
 }
 .progress-title b {
@@ -509,18 +509,18 @@ h1 {
   gap: 3px;
 }
 .run-agent b {
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
 }
 .run-agent small {
-  font-size: 9px;
+  font-size: 13px;
 }
 .run-state {
   margin-left: auto;
   margin-right: 13px;
 }
 .check {
-  font-size: 10px;
+  font-size: 13px;
   border-radius: 50%;
   width: 17px;
   height: 17px;
@@ -547,11 +547,11 @@ h1 {
   margin-bottom: 11px;
 }
 .feed-head h2 {
-  font: 700 14px Manrope;
+  font: 650 16px "Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
   margin: 0 0 4px;
 }
 .feed-sub {
-  font-size: 10px;
+  font-size: 13px;
 }
 .filters {
   display: flex;
@@ -564,14 +564,14 @@ h1 {
   border: 0;
   border-radius: 6px;
   padding: 6px 9px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .filter.active {
 }
 .filter span {
   border-radius: 5px;
   padding: 2px 5px;
-  font-size: 9px;
+  font-size: 13px;
   margin-left: 2px;
 }
 .timeline {
@@ -590,7 +590,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 9px;
+  font-size: 13px;
   margin: 0 0 13px 26px;
 }
 .time-label i {
@@ -621,24 +621,24 @@ h1 {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .message-by>b {
-  font-size: 11px;
+  font-size: 14px;
 }
 .role-tag {
-  font-size: 8px;
+  font-size: 13px;
   border-radius: 4px;
   padding: 3px 5px;
 }
 .subtag {
 }
 .message-by time {
-  font-size: 9px;
+  font-size: 13px;
 }
 .message-state {
   margin-left: auto;
-  font-size: 9px;
+  font-size: 13px;
 }
 .message-state.success {
 }
@@ -650,7 +650,7 @@ h1 {
   padding: 10px 12px;
 }
 .message-card p {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.75;
   margin: 0;
 }
@@ -661,15 +661,15 @@ h1 {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .summary-icon {
-  font-size: 11px;
+  font-size: 14px;
 }
 .text-action {
   margin-left: auto;
   border: 0;
-  font-size: 9px;
+  font-size: 13px;
   padding: 1px 2px;
 }
 .text-action span {
@@ -679,14 +679,14 @@ h1 {
   border-top: 1px dashed #ececec;
   margin-top: 9px;
   padding: 9px 2px 0;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.8;
 }
 .parallel-marker {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 9px;
+  font-size: 13px;
   margin: 2px 0 12px 43px;
 }
 .parallel-marker>span {
@@ -733,7 +733,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .send-context b {
 }
@@ -742,7 +742,7 @@ h1 {
 .route-toggle {
   border: 0;
   border-radius: 6px;
-  font-size: 9px;
+  font-size: 13px;
   padding: 5px 7px;
 }
 .route-menu {
@@ -778,7 +778,7 @@ h1 {
   height: 30px;
   border: 0;
   border-radius: 7px;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
   padding: 0 11px;
 }
@@ -791,7 +791,7 @@ h1 {
   padding-top: 6px;
   display: flex;
   justify-content: space-between;
-  font-size: 8px;
+  font-size: 13px;
 }
 .composer-foot>span:first-child span {
   padding: 0 3px;
@@ -799,7 +799,7 @@ h1 {
 .secure {
 }
 .secure i {
-  font-size: 7px;
+  font-size: 13px;
 }
 .toast {
   position: fixed;
@@ -808,7 +808,7 @@ h1 {
   transform: translateX(-50%);
   padding: 10px 16px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .hidden {
   display: none !important;
@@ -903,7 +903,7 @@ h1 {
     padding-left: 5px;
   }
   .run-agent small {
-    font-size: 8px;
+    font-size: 13px;
   }
   .run-state {
     margin-right: 4px;
@@ -932,7 +932,7 @@ h1 {
     gap: 4px;
   }
   .message-state {
-    font-size: 8px;
+    font-size: 13px;
   }
   .message-card {
     padding: 8px;
@@ -947,7 +947,7 @@ h1 {
     padding: 8px;
   }
   .route-toggle {
-    font-size: 8px;
+    font-size: 13px;
   }
   .secure {
     display: none;
@@ -956,21 +956,21 @@ h1 {
 .deadline {
   border: 0;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 13px;
 }
 .timeout-note {
   margin-top: 10px;
   padding: 8px 9px;
   border: 1px solid #e4e4e4;
   border-radius: 7px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .timeout-note b {
   font-weight: 700;
 }
 .timeout-note button {
   border: 0;
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 600;
   margin-left: 5px;
   text-decoration: underline;
@@ -981,7 +981,7 @@ h1 {
   gap: 8px;
 }
 .snapshot-label {
-  font-size: 9px;
+  font-size: 13px;
   padding: 3px 6px;
   border-radius: 5px;
 }
@@ -993,7 +993,7 @@ h1 {
 }
 .edit-deadline {
   border: 0;
-  font-size: 9px;
+  font-size: 13px;
   padding: 4px 2px;
 }
 .deadline-editor {
@@ -1009,7 +1009,7 @@ h1 {
   min-width: 210px;
 }
 .deadline-editor label {
-  font-size: 10px;
+  font-size: 13px;
 }
 .deadline-editor input {
   border: 1px solid var(--line);
@@ -1021,10 +1021,10 @@ h1 {
   border: 0;
   border-radius: 6px;
   padding: 7px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .summary-label {
-  font-size: 8px;
+  font-size: 13px;
   border-radius: 4px;
   padding: 3px 5px;
   white-space: nowrap;
@@ -1040,26 +1040,26 @@ h1 {
   border: 1px dashed #e8e8e8;
   padding: 8px 10px;
   border-radius: 8px;
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .relay-card>b {
   white-space: nowrap;
 }
 .relay-arrow,.reply-arrow {
-  font-size: 10px;
+  font-size: 13px;
 }
 .route-menu button {
   line-height: 1.35;
 }
 .route-menu button small {
   display: block;
-  font-size: 9px;
+  font-size: 13px;
   margin-top: 3px;
 }
 .route-separator {
   padding: 7px 8px 4px;
-  font-size: 8px;
+  font-size: 13px;
   border-top: 1px solid #f2f2f2;
   margin-top: 3px;
 }
@@ -1071,13 +1071,13 @@ h1 {
     flex-wrap: wrap;
   }
   .snapshot-label {
-    font-size: 8px;
+    font-size: 13px;
   }
   .task-meta {
     padding-right: 0;
   }
   .edit-deadline {
-    font-size: 8px;
+    font-size: 13px;
   }
   .deadline-editor {
     left: 0;
@@ -1089,7 +1089,7 @@ h1 {
   }
   .filter {
     padding: 6px 7px;
-    font-size: 9px;
+    font-size: 13px;
   }
   .summary-label {
     order: -1;
@@ -1127,16 +1127,16 @@ h1 {
   place-items: center;
 }
 .aggregate-kicker {
-  font-size: 8px;
+  font-size: 13px;
   letter-spacing: .12em;
 }
 .aggregate-title h2 {
-  font-size: 12px;
+  font-size: 14px;
   margin: 3px 0 0;
   font-weight: 700;
 }
 .aggregate-state {
-  font-size: 9px;
+  font-size: 13px;
   padding: 4px 7px;
   border-radius: 5px;
 }
@@ -1157,7 +1157,7 @@ h1 {
 }
 .aggregate-wait p,.aggregate-partial p,.aggregate-complete p {
   margin: 10px 0 8px;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.8;
 }
 .aggregate-wait p b {
@@ -1165,7 +1165,7 @@ h1 {
 .aggregate-action {
   border: 0;
   border-radius: 6px;
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 600;
   padding: 7px 10px;
 }
@@ -1176,7 +1176,7 @@ h1 {
   align-items: center;
   gap: 8px;
   margin-top: 10px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .aggregate-callout>b {
   border-radius: 5px;
@@ -1196,13 +1196,13 @@ h1 {
   justify-content: space-between;
   border-top: 1px solid #f1f1f1;
   padding-top: 7px;
-  font-size: 8px;
+  font-size: 13px;
 }
 .aggregate-original {
   border-top: 1px dashed #e7e7e7;
   margin-top: 8px;
   padding: 9px 2px 1px;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.8;
 }
 .aggregate-original>b {
@@ -1214,7 +1214,7 @@ h1 {
   display: none !important;
 }
 .expand-aggregate {
-  font-size: 9px;
+  font-size: 13px;
 }
 @media (max-width:640px) {
   .aggregate-card {
@@ -1226,7 +1226,7 @@ h1 {
     gap: 8px;
   }
   .aggregate-title h2 {
-    font-size: 11px;
+    font-size: 14px;
   }
   .aggregate-callout {
     align-items: flex-start;
@@ -1242,7 +1242,7 @@ h1 {
     text-align: right;
   }
   .aggregate-wait p,.aggregate-partial p,.aggregate-complete p {
-    font-size: 9px;
+    font-size: 13px;
   }
   .aggregate-state {
     white-space: nowrap;
@@ -1256,11 +1256,11 @@ h1 {
   gap: 7px;
 }
 .lead-label b {
-  font-size: 10px;
+  font-size: 13px;
 }
 .field-label {
   display: block;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
   margin-bottom: 5px;
 }
@@ -1285,7 +1285,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: 13px;
   padding: 2px 0;
 }
 .switch-row input {
@@ -1298,11 +1298,11 @@ h1 {
   border: 0;
   border-radius: 7px;
   padding: 8px 10px;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
 }
 .lead-note {
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.5;
   margin: 0;
 }
@@ -1325,25 +1325,25 @@ h1 {
 }
 .agent-name {
   display: block;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .agent-desc {
   display: block;
-  font-size: 9px;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .empty-side {
-  font-size: 10px;
+  font-size: 13px;
   padding: 8px;
 }
 .connection {
   margin-left: auto;
-  font-size: 9px;
+  font-size: 13px;
 }
 .sync-error {
 }
@@ -1373,7 +1373,7 @@ h1 {
   align-items: center;
   padding: 5px 8px;
   border-radius: 6px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .prompt-input {
   width: 100%;
@@ -1404,7 +1404,7 @@ h1 {
   border: 1px solid #eaeaea;
   border-radius: 7px;
   padding: 5px 8px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .target-pick.selected {
   border-color: #c4c4c4;
@@ -1415,7 +1415,7 @@ h1 {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  font-size: 9px;
+  font-size: 13px;
 }
 .target-pick.selected .target-check {
 }
@@ -1424,11 +1424,11 @@ h1 {
   pointer-events: none;
 }
 .muted {
-  font-size: 10px;
+  font-size: 13px;
 }
 .deadline-area small {
   display: block;
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.5;
   margin-top: 5px;
 }
@@ -1442,7 +1442,7 @@ h1 {
   border-top: 1px solid #f2f2f2;
 }
 .dispatch-footer>span {
-  font-size: 9px;
+  font-size: 13px;
 }
 .dispatch-footer .send {
   height: 34px;
@@ -1459,7 +1459,7 @@ h1 {
   border-radius: 9px;
   padding: 10px 12px;
   margin-bottom: 14px;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .not-ready-banner b {
@@ -1474,7 +1474,7 @@ h1 {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .deadline-chip.overdue {
 }
@@ -1484,7 +1484,7 @@ h1 {
   margin-top: 13px;
 }
 .run-progress .progress-title {
-  font-size: 10px;
+  font-size: 13px;
 }
 .run-progress .progressbar {
   margin-bottom: 11px;
@@ -1508,15 +1508,15 @@ h1 {
   gap: 3px;
 }
 .run-task-meta b {
-  font-size: 10px;
+  font-size: 13px;
 }
 .run-task-meta small {
-  font-size: 8px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .task-state {
-  font-size: 8px;
+  font-size: 13px;
   border-radius: 5px;
   padding: 4px 6px;
   white-space: nowrap;
@@ -1529,24 +1529,24 @@ h1 {
 }
 .task-error {
   grid-column: 2/-1;
-  font-size: 9px;
+  font-size: 13px;
   overflow-wrap: anywhere;
   margin: 0;
 }
 .response-link {
   border: 0;
-  font-size: 9px;
+  font-size: 13px;
   padding: 4px 2px;
 }
 .response-pending {
-  font-size: 8px;
+  font-size: 13px;
 }
 .deadline-alert {
   margin-top: 10px;
   padding: 8px 10px;
   border: 1px solid #e0e0e0;
   border-radius: 7px;
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.55;
 }
 .summary-panel {
@@ -1560,10 +1560,10 @@ h1 {
 }
 .summary-head h3 {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: 14px;
 }
 .summary-state {
-  font-size: 9px;
+  font-size: 13px;
   border-radius: 5px;
   padding: 4px 7px;
 }
@@ -1575,15 +1575,15 @@ h1 {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin: 9px 0 4px;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.75;
 }
 .summary-help {
   margin: 3px 0 0;
-  font-size: 8px;
+  font-size: 13px;
 }
 .summary-panel .text-action {
-  font-size: 9px;
+  font-size: 13px;
 }
 .feed-head {
   margin-top: 16px;
@@ -1597,7 +1597,7 @@ h1 {
 }
 .empty-events {
   padding: 15px 10px;
-  font-size: 10px;
+  font-size: 13px;
   text-align: center;
 }
 .event-item {
@@ -1616,24 +1616,24 @@ h1 {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .event-meta>b {
-  font-size: 10px;
+  font-size: 13px;
 }
 .event-meta time {
   margin-left: auto;
-  font-size: 8px;
+  font-size: 13px;
 }
 .event-text {
   margin: 5px 0 2px;
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .event-task-id {
-  font-size: 8px;
+  font-size: 13px;
 }
 .session-runs {
   margin: 10px 0;
@@ -1643,7 +1643,7 @@ h1 {
   border-radius: 6px;
   padding: 6px 8px;
   margin: 0 5px 5px 0;
-  font-size: 9px;
+  font-size: 13px;
 }
 .response-dialog {
   width: min(760px,calc(100vw - 28px));
@@ -1667,7 +1667,7 @@ h1 {
   justify-content: space-between;
 }
 .dialog-head h2 {
-  font-size: 13px;
+  font-size: 14px;
   margin: 0;
 }
 .response-dialog pre {
@@ -1712,7 +1712,7 @@ h1 {
     align-items: center;
   }
   .run-head h2 {
-    font-size: 13px;
+    font-size: 14px;
   }
   .not-ready-banner {
     display: grid;
@@ -1736,11 +1736,11 @@ h1 {
 }
 .field-select,.field-input,.deadline-editor input {
   font-family: inherit;
-  font-size: 10px;
+  font-size: 13px;
 }
 .prompt-input {
   font-family: inherit;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.65;
 }
 .response-dialog pre {
@@ -1764,14 +1764,14 @@ h1 {
 }
 .plan-panel h3 {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: 14px;
 }
 .plan-agent {
-  font-size: 9px;
+  font-size: 13px;
   margin: 8px 0;
 }
 .plan-content {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.7;
   white-space: pre-wrap;
 }
@@ -1785,7 +1785,7 @@ h1 {
 .plan-question {
   padding: 7px 8px;
   border-radius: 6px;
-  font-size: 9px;
+  font-size: 13px;
   margin: 0;
 }
 .plan-tasks {
@@ -1801,13 +1801,13 @@ h1 {
   border-radius: 7px;
 }
 .plan-task b {
-  font-size: 10px;
+  font-size: 13px;
 }
 .plan-task small {
-  font-size: 8px;
+  font-size: 13px;
 }
 .plan-task p {
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1821,7 +1821,7 @@ h1 {
   margin-top: 6px;
   border-top: 1px dashed #eaeaea;
   padding-top: 6px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .event-task-prompt summary {
   cursor: pointer;
@@ -1836,13 +1836,13 @@ h1 {
   border-radius: 6px;
 }
 .task-summary-label {
-  font-size: 8px;
+  font-size: 13px;
 }
 .task-summary-label.pending {
 }
 .task-summary-content {
   margin: 3px 0 0;
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1868,7 +1868,7 @@ h1 {
 .task-summary-meta {
   display: block;
   margin-top: 3px;
-  font-size: 8px;
+  font-size: 13px;
 }
 .task-summary-label.failed {
 }
@@ -2018,8 +2018,8 @@ h1 {
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
-  font-size: 14px;
+  font-family: "Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+  font-size: 16px;
   letter-spacing: .005em;
 }
 button,input,select,textarea {
@@ -2057,7 +2057,7 @@ button,input,select,textarea {
   letter-spacing: -.02em;
 }
 .brand small,.workspace small,.agent small,.health small,.profile small {
-  font-size: 11px;
+  font-size: 14px;
   color: #89877f;
 }
 .workspace {
@@ -2074,11 +2074,12 @@ button,input,select,textarea {
   border-radius: 9px;
 }
 .workspace b {
-  font-size: 12px;
+  font-size: 14px;
 }
 .section-label {
-  font-size: 10px;
-  letter-spacing: .09em;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .06em;
   color: #85837b;
   padding-bottom: 10px;
 }
@@ -2100,11 +2101,11 @@ button,input,select,textarea {
   box-shadow: 0 1px 3px #35312610;
 }
 .mode-option b {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 620;
 }
 .mode-option small {
-  font-size: 11px;
+  font-size: 14px;
   color: #85837b;
 }
 .mode-symbol,.mode-symbol.purple {
@@ -2120,7 +2121,7 @@ button,input,select,textarea {
 .mode-option.active .radio {
   border: 4px solid #5e594e;
 }
-.mode-explainer { display:block; margin:-11px 5px 16px; color:#6f6c63; font-size:10px; line-height:1.55; }
+.mode-explainer { display:block; margin:-11px 5px 16px; color:#6f6c63; font-size:13px; line-height:1.55; }
 .lead-config {
   margin: 0 0 20px;
   padding: 13px 11px;
@@ -2130,34 +2131,35 @@ button,input,select,textarea {
   gap: 8px;
 }
 .lead-label {
-  font-size: 11px;
+  font-size: 14px;
   color: #56554f;
 }
 .lead-label b {
-  font-size: 11px;
+  font-size: 14px;
   color: #37362f;
 }
 .state-pill {
   background: #e9e8e2;
   color: #4f594e;
-  font-size: 10px;
+  font-size: 13px;
   padding: 5px 7px;
 }
 .field-label {
-  font-size: 11px;
+  font-size: 14px;
+  font-weight: 600;
   color: #5f5e57;
   margin-bottom: 5px;
 }
 .field-select,.field-input {
-  min-height: 36px;
+  min-height: 42px;
   border-color: #dedbd3;
   border-radius: 8px;
   padding: 8px 10px;
   background: #fffefa;
-  font-size: 12px;
+  font-size: 16px;
 }
 .switch-row {
-  font-size: 11px;
+  font-size: 14px;
   color: #55544e;
 }
 .switch-row input {
@@ -2167,10 +2169,10 @@ button,input,select,textarea {
   background: #282822;
   border-radius: 8px;
   padding: 10px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .lead-note {
-  font-size: 10px;
+  font-size: 13px;
   color: #76746d;
   line-height: 1.55;
 }
@@ -2235,7 +2237,7 @@ button,input,select,textarea {
   border-radius: 8px;
 }
 .health b,.profile b {
-  font-size: 11px;
+  font-size: 14px;
 }
 .profile {
   border-color: #e6e2d9;
@@ -2249,7 +2251,7 @@ button,input,select,textarea {
   border-radius: 9px;
   background: #e9e6de;
   color: #514d43;
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 700;
 }
 .main {
@@ -2262,7 +2264,7 @@ button,input,select,textarea {
   padding: 0 40px;
 }
 .crumb {
-  font-size: 12px;
+  font-size: 14px;
   color: #77756d;
 }
 .crumb b {
@@ -2273,22 +2275,23 @@ button,input,select,textarea {
   gap: 20px;
 }
 .sync {
-  font-size: 11px;
+  font-size: 14px;
   color: #66655e;
 }
 .sync i {
   background: #66776a;
 }
 .help {
-  font-size: 11px;
+  font-size: 14px;
   color: #6b6962;
 }
 .settings-trigger,.secondary-button {
   border: 1px solid #dedbd3;
+  font-weight: 600;
   border-radius: 8px;
   background: #fffefa;
   padding: 8px 11px;
-  font-size: 11px;
+  font-size: 14px;
   color: #403f39;
 }
 .settings-trigger {
@@ -2308,7 +2311,7 @@ button,input,select,textarea {
   margin-bottom: 24px;
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: 13px;
   color: #8d8a81;
   letter-spacing: .13em;
 }
@@ -2323,7 +2326,7 @@ h1 {
   margin: 8px 0 7px;
 }
 .heading p {
-  font-size: 13px;
+  font-size: 16px;
   color: #737169;
   line-height: 1.6;
 }
@@ -2352,9 +2355,10 @@ h1 {
   border: 1px solid #e3e0d7;
   border-radius: 7px;
   padding: 6px 9px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .prompt-input {
+  font-size: 16px;
   line-height: 1.65;
   border: 1px solid #ddd9d0;
   background: #fff;
@@ -2382,7 +2386,7 @@ h1 {
   background: #f4f2ed;
   color: #49473f;
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: 14px;
   text-align: left;
 }
 .empty-setup-action:hover { background: #eae7df; }
@@ -2403,7 +2407,7 @@ h1 {
   min-width: 210px;
 }
 .deadline-area small {
-  font-size: 10px;
+  font-size: 13px;
   color: #7d7a72;
 }
 .dispatch-footer {
@@ -2412,7 +2416,7 @@ h1 {
   padding-top: 14px;
 }
 .dispatch-footer>span {
-  font-size: 11px;
+  font-size: 14px;
   color: #77746b;
 }
 .send,.primary-button {
@@ -2422,7 +2426,7 @@ h1 {
   border-radius: 8px;
   box-shadow: none;
   padding: 10px 14px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 620;
 }
 .send:hover:not(:disabled),.primary-button:hover {
@@ -2448,14 +2452,14 @@ h1 {
   line-height: 1.45;
 }
 .run-meta {
-  font-size: 11px;
+  font-size: 14px;
   color: #79766e;
 }
 .run-progress {
   margin: 18px 0;
 }
 .progress-title {
-  font-size: 11px;
+  font-size: 14px;
   color: #77746b;
 }
 .progress-title b {
@@ -2474,7 +2478,7 @@ h1 {
   color: #5c5a52;
   padding: 5px 8px;
   border-radius: 7px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .task-state.interrupted { background:#efede7; color:#5c5a52; border-color:#e3e0d8; }
 .task-state:before {
@@ -2503,21 +2507,21 @@ h1 {
   margin-top: 18px;
 }
 .summary-head h3 {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 630;
 }
 .summary-content,.event-text,.task-summary-content {
-  font-size: 12px;
+  font-size: 16px;
   line-height: 1.7;
   color: #535149;
 }
 .summary-help,.task-summary-meta {
   color: #79766e;
-  font-size: 10px;
+  font-size: 13px;
 }
 .text-action {
   color: #5c574c;
-  font-size: 11px;
+  font-size: 14px;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -2525,11 +2529,11 @@ h1 {
   margin: 23px 0 12px;
 }
 .feed-head h3 {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 630;
 }
 .feed-sub {
-  font-size: 11px;
+  font-size: 14px;
   color: #79766e;
 }
 .filters {
@@ -2537,7 +2541,8 @@ h1 {
   border-radius: 8px;
 }
 .filter {
-  font-size: 10px;
+  font-size: 14px;
+  font-weight: 500;
   color: #6f6d65;
 }
 .filter.active {
@@ -2574,11 +2579,11 @@ h1 {
 }
 .response-link {
   color: #555146;
-  font-size: 11px;
+  font-size: 14px;
 }
 .not-ready-banner {
   padding: 12px 15px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .not-ready-banner b {
   color: #544f45;
@@ -2594,7 +2599,7 @@ h1 {
 .toast {
   background: #2e2d27;
   color: #faf9f5;
-  font-size: 12px;
+  font-size: 14px;
   border-radius: 9px;
 }
 /*Settings*/
@@ -2634,7 +2639,7 @@ h1 {
   margin: 5px 0;
 }
 .settings-header p {
-  font-size: 12px;
+  font-size: 14px;
   color: #77746c;
   margin: 0;
 }
@@ -2662,7 +2667,7 @@ h1 {
   text-align: left;
   padding: 10px 12px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 14px;
   color: #6f6d64;
 }
 .settings-tab:hover {
@@ -2694,7 +2699,7 @@ h1 {
   margin: 0 0 5px;
 }
 .settings-section-intro p,.templates-head p {
-  font-size: 11px;
+  font-size: 14px;
   color: #77746c;
   line-height: 1.6;
   margin: 0;
@@ -2710,7 +2715,7 @@ h1 {
   padding: 25px;
   color: #77746c;
   text-align: center;
-  font-size: 12px;
+  font-size: 14px;
 }
 .config-row {
   border: 1px solid #e4e1d9;
@@ -2726,7 +2731,7 @@ h1 {
   flex: 1;
 }
 .config-row-title {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 630;
   display: flex;
   align-items: center;
@@ -2735,12 +2740,12 @@ h1 {
 .config-row-meta {
   margin-top: 4px;
   color: #7d7a72;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
 .config-row-status {
-  font-size: 10px;
+  font-size: 13px;
   color: #646158;
   white-space: nowrap;
 }
@@ -2757,10 +2762,11 @@ h1 {
 }
 .config-row-actions button {
   border: 1px solid #e1ded5;
+  font-weight: 600;
   background: #fbfaf7;
   border-radius: 7px;
   padding: 6px 9px;
-  font-size: 10px;
+  font-size: 14px;
   color: #55534c;
 }
 .config-row-actions button:hover {
@@ -2780,7 +2786,7 @@ h1 {
   margin-bottom: 14px;
 }
 .editor-head h4,.templates-head h4 {
-  font-size: 13px;
+  font-size: 14px;
   margin: 4px 0 0;
   font-weight: 630;
 }
@@ -2793,7 +2799,7 @@ h1 {
   display: grid;
   gap: 6px;
   min-width: 0;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 600;
   color: #5f5c53;
 }
@@ -2805,7 +2811,7 @@ h1 {
   border-radius: 8px;
   background: #fffefa;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 400;
 }
 .form-field input::placeholder {
@@ -2815,7 +2821,7 @@ h1 {
   grid-column: 1/-1;
 }
 .field-help {
-  font-size: 10px;
+  font-size: 13px;
   color: #77746c;
   font-weight: 400;
   line-height: 1.5;
@@ -2837,7 +2843,7 @@ h1 {
   border-radius: 6px;
   background: transparent;
   color: #6e6b62;
-  font-size: 10px;
+  font-size: 13px;
   padding: 0 7px;
 }
 .reveal-secret:hover {
@@ -2874,7 +2880,7 @@ h1 {
   gap: 12px;
 }
 .template-scope {
-  font-size: 9px;
+  font-size: 13px;
   color: #5f5c53;
   background: #efede7;
   border-radius: 6px;
@@ -2900,7 +2906,7 @@ h1 {
   gap: 9px;
   min-width: 0;
   flex: 1;
-  font-size: 11px;
+  font-size: 14px;
 }
 .template-name {
   font-weight: 620;
@@ -2909,7 +2915,7 @@ h1 {
   white-space: nowrap;
 }
 .template-meta {
-  font-size: 10px;
+  font-size: 13px;
   color: #77746c;
   margin-left: auto;
 }
@@ -2917,7 +2923,7 @@ h1 {
   border: 0;
   background: transparent;
   color: #6a675e;
-  font-size: 10px;
+  font-size: 13px;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -3004,7 +3010,7 @@ h1 {
     height: 25px;
   }
   .mode-option small {
-    font-size: 9px;
+    font-size: 13px;
   }
   .lead-config {
     display: none;
@@ -3040,7 +3046,7 @@ h1 {
     padding: 0 14px;
   }
   .crumb {
-    font-size: 10px;
+    font-size: 13px;
   }
   .top-actions {
     gap: 10px;
@@ -3049,7 +3055,7 @@ h1 {
     display: none;
   }
   .settings-trigger {
-    font-size: 10px;
+    font-size: 14px;
     padding: 7px 9px;
   }
   .content {
@@ -3060,7 +3066,7 @@ h1 {
     font-size: 22px;
   }
   .heading p {
-    font-size: 11px;
+    font-size: 16px;
   }
   .dispatch-card,.current-run {
     padding: 15px;
@@ -3126,16 +3132,16 @@ h1 {
   .settings-tab {
     white-space: nowrap;
     padding: 9px 10px;
-    font-size: 10px;
+    font-size: 13px;
   }
   .settings-content {
     padding: 17px 15px 24px;
   }
   .settings-section-intro h3 {
-    font-size: 14px;
+    font-size: 16px;
   }
   .settings-section-intro p {
-    font-size: 10px;
+    font-size: 13px;
   }
   .form-grid {
     grid-template-columns: 1fr;
