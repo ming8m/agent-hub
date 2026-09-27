@@ -107,14 +107,26 @@ def _read_limited(response, deadline) -> bytes:
 def _content(protocol: str, payload: dict) -> str:
     try:
         if protocol in {"openai-chat-completions", "ollama-chat"}:
-            value = payload["choices"][0]["message"]["content"] if protocol.startswith("openai-") else payload["message"]["content"]
+            if protocol.startswith("openai-"):
+                choice = payload["choices"][0]
+                if choice.get("finish_reason") == "length":
+                    raise ProviderError("Provider output reached its maximum output tokens; increase the configured max_tokens")
+                value = choice["message"]["content"]
+            else:
+                if payload.get("done_reason") == "length":
+                    raise ProviderError("Provider output reached its maximum output tokens; increase the configured max_tokens")
+                value = payload["message"]["content"]
             if isinstance(value, list):
                 value = "".join(part.get("text", "") for part in value if isinstance(part, dict))
         else:
+            if payload.get("stop_reason") == "max_tokens":
+                raise ProviderError("Provider output reached its maximum output tokens; increase the configured max_tokens")
             value = "".join(part.get("text", "") for part in payload["content"] if isinstance(part, dict)
                             and part.get("type") == "text")
         if not isinstance(value, str):
             raise TypeError
+        if not value.strip():
+            raise ProviderError("Provider returned empty content")
         return value
     except (KeyError, IndexError, TypeError) as exc:
         raise ProviderError("Provider response did not match the configured protocol") from exc

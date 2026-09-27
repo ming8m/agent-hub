@@ -30,6 +30,20 @@ class HubProtocolTests(unittest.TestCase):
         self.assertEqual(plan["dispatch_policy"], "preview")
         self.assertEqual(plan["tasks"][1]["depends_on"], ["research"])
 
+    def test_group_mapping_requires_valid_unique_members(self):
+        plan = self.valid_plan()
+        plan["groups"] = [{"group_id": "team", "leader_agent_id": "alpha",
+                           "member_agent_ids": ["alpha", "beta"]}]
+        plan["tasks"][1]["group_id"] = "team"
+        accepted = protocol.validate_plan(plan, self.agents)
+        self.assertEqual("team", accepted["tasks"][1]["group_id"])
+        for members in ([{}], ["alpha", "alpha"], ["beta"]):
+            bad = self.valid_plan()
+            bad["groups"] = [{"group_id": "team", "leader_agent_id": "alpha",
+                              "member_agent_ids": members}]
+            with self.subTest(members=members), self.assertRaises(protocol.ProtocolError):
+                protocol.validate_plan(bad, self.agents)
+
     def test_questions_are_optional(self):
         plan = self.valid_plan()
         del plan["questions"]

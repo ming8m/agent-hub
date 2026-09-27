@@ -236,6 +236,8 @@ class HubTests(unittest.TestCase):
             deadline = time.monotonic() + 2
             while time.monotonic() < deadline and recovered.get_task(queued["task_id"])["status"] == "queued":
                 time.sleep(0.01)
+            while time.monotonic() < deadline and not calls:
+                time.sleep(0.01)
             self.assertEqual(len(calls), 1)
             self.assertEqual(calls[0][0], "beta")
             self.assertTrue(calls[0][1].startswith("safe queued retry\n\nAgent Hub communication is optional."))

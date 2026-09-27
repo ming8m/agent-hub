@@ -394,6 +394,15 @@ class Handler(BaseHTTPRequestHandler):
             except hub.HubError as exc:
                 status, body = _api_error(exc)
                 self._send(status, json.dumps(body, ensure_ascii=False))
+        elif re.fullmatch(r"/api/runs/[0-9a-f]{32}/disputes", path) and not parsed_url.query:
+            if not self._guard():
+                return
+            try:
+                disputes = _get_hub().list_disputes(path.split("/")[3])
+                self._send(200, json.dumps({"ok": True, "disputes": disputes}, ensure_ascii=False))
+            except hub.HubError as exc:
+                status, body = _api_error(exc)
+                self._send(status, json.dumps(body, ensure_ascii=False))
         elif re.fullmatch(r"/api/runs/[0-9a-f]{32}/events", path):
             if not self._guard():
                 return
@@ -489,7 +498,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(status, json.dumps(body, ensure_ascii=False))
             if not isinstance(mode, str) or mode not in ("direct", "orchestrated"):
                 return self._send(400, '{"ok":false,"error":"invalid_request","message":"mode must be direct or orchestrated"}')
-            if set(payload) - {"mode", "prompt", "target_agent_ids", "deadline_seconds", "dispatch_policy"}:
+            if set(payload) - {"mode", "prompt", "target_agent_ids", "deadline_seconds", "dispatch_policy", "collaboration"}:
                 return self._send(400, '{"ok":false,"error":"invalid_request","message":"Unknown run field"}')
             dispatch_policy = payload.get("dispatch_policy", "preview")
             if dispatch_policy not in ("auto", "preview"):
@@ -498,7 +507,7 @@ class Handler(BaseHTTPRequestHandler):
                 idem = self.headers.get("Idempotency-Key")
                 result = _get_hub().create_run(payload.get("prompt"), payload.get("target_agent_ids"),
                     deadline_seconds=payload.get("deadline_seconds"), idempotency_key=idem,
-                    mode=mode, dispatch_policy=dispatch_policy)
+                    mode=mode, dispatch_policy=dispatch_policy, collaboration=payload.get("collaboration"))
                 self._send(202, json.dumps({"ok": True, **result}, ensure_ascii=False))
             except hub.HubError as exc:
                 status, body = _api_error(exc)
@@ -528,6 +537,41 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, '{"ok":false,"error":"invalid_request","message":"Unknown summary field"}')
                 summary = _get_hub().summarize(path.split("/")[3], partial=payload.get("partial", False))
                 self._send(200, json.dumps({"ok": True, "summary": summary}, ensure_ascii=False))
+            except hub.HubError as exc:
+                status, body = _api_error(exc)
+                self._send(status, json.dumps(body, ensure_ascii=False))
+        elif re.fullmatch(r"/api/runs/[0-9a-f]{32}/disputes", path) and not urlsplit(self.path).query:
+            if not self._guard(need_body=True):
+                return
+            payload = self._read_object_body()
+            if payload is None:
+                return
+            try:
+                dispute = _get_hub().create_dispute(path.split("/")[3], payload)
+                self._send(201, json.dumps({"ok": True, "dispute": dispute}, ensure_ascii=False))
+            except hub.HubError as exc:
+                status, body = _api_error(exc)
+                self._send(status, json.dumps(body, ensure_ascii=False))
+        elif re.fullmatch(r"/api/runs/[0-9a-f]{32}/disputes/[0-9a-f]{32}/(review|evidence|human-decision)", path) and not urlsplit(self.path).query:
+            if not self._guard(need_body=True):
+                return
+            payload = self._read_object_body()
+            if payload is None:
+                return
+            parts = path.split("/")
+            try:
+                if parts[-1] == "review":
+                    if payload:
+                        raise hub.HubError("invalid_request", "Review body must be empty")
+                    dispute = _get_hub().review_dispute(parts[3], parts[5])
+                    code = 202
+                elif parts[-1] == "evidence":
+                    dispute = _get_hub().add_dispute_evidence(parts[3], parts[5], payload)
+                    code = 200
+                else:
+                    dispute = _get_hub().decide_dispute(parts[3], parts[5], payload)
+                    code = 200
+                self._send(code, json.dumps({"ok": True, "dispute": dispute}, ensure_ascii=False))
             except hub.HubError as exc:
                 status, body = _api_error(exc)
                 self._send(status, json.dumps(body, ensure_ascii=False))

@@ -46,6 +46,7 @@
   const state = {
     agents: [], hub: null, selectedTargets: new Set(), mode: 'direct', currentRunId: null,
     currentRun: null, events: [], eventCursor: 0, relation: 'all', history: [], timer: null,
+    runTab: null, runTabRunId: null, selectedRepresentatives: new Set(), disputeSignature: null, disputeOptionsSignature: null,
     dirtyConfig: false, loadingRun: false, agentSignature: null, hubSignature: null, hubLoaded: false,
     registry: { providers: [], provider_agents: [], templates: [], approved_template_ids: [] }, registryLoaded: false
   };
@@ -141,6 +142,7 @@
     state.agentSignature = signature;
     const registeredIds = new Set(state.agents.map(agent => agent.id));
     state.selectedTargets = new Set([...state.selectedTargets].filter(id => registeredIds.has(id)));
+    state.selectedRepresentatives = new Set([...state.selectedRepresentatives].filter(id => registeredIds.has(id)));
     const list = $('#agentList'), picks = $('#targetPicks');
     list.replaceChildren(); picks.replaceChildren();
     $('#agentCount').textContent = state.agents.length;
@@ -148,6 +150,7 @@
       addText(list, 'div', 'empty-side', '尚无已注册 Agent');
       addText(picks, 'span', 'muted', '先添加自定义模型服务，再创建 Agent。');
       addSetupAction(picks); addSetupAction(list);
+      renderCollaborationSelectors();
       return;
     }
     for (const [index, agent] of state.agents.entries()) {
@@ -161,7 +164,7 @@
       indicator.setAttribute('aria-label', state.busy?.[agent.id] ? '执行中' : '空闲'); side.append(indicator); list.append(side);
 
     }
-    renderTargetPicks(); renderOrchestratorOptions(); updateDispatchState();
+    renderTargetPicks(); renderOrchestratorOptions(); renderCollaborationSelectors(); updateDispatchState();
   }
   function renderTargetPicks() {
     const picks = $('#targetPicks'); picks.replaceChildren();
@@ -173,6 +176,37 @@
       button.append(makeAvatar(agent.id, true)); addText(button, 'span', '', agent.name || agent.id);
       addText(button, 'span', 'target-check', state.selectedTargets.has(agent.id) ? '✓' : '+'); picks.append(button);
     }
+  }
+  function renderCollaborationSelectors() {
+    const picks = $('#representativePicks'); picks.replaceChildren();
+    if (!state.agents.length) addText(picks, 'span', 'muted', '请先创建至少两位 Agent。');
+    for (const agent of state.agents) {
+      const button = addText(picks, 'button', 'collab-agent-pick', agent.name || agent.id);
+      button.type = 'button'; button.dataset.agentId = agent.id;
+      button.setAttribute('aria-pressed', String(state.selectedRepresentatives.has(agent.id)));
+      button.classList.toggle('selected', state.selectedRepresentatives.has(agent.id));
+    }
+    const select = $('#presetArbiter'), current = select.value;
+    select.replaceChildren();
+    const empty = document.createElement('option'); empty.value = ''; empty.textContent = '由本轮合格上级处理'; select.append(empty);
+    for (const agent of state.agents) {
+      const option = document.createElement('option'); option.value = agent.id; option.textContent = agent.name || agent.id; select.append(option);
+    }
+    select.value = [...select.options].some(option => option.value === current) ? current : '';
+  }
+  function renderCollabFileList() {
+    const list = $('#collabFileList'); list.replaceChildren();
+    const files = [...$('#collabFiles').files];
+    if (!files.length) { list.textContent = '尚未选择文件。'; return; }
+    for (const file of files) addText(list, 'span', 'collab-file', `${file.name} · ${file.size} B`);
+  }
+  function setRepresentativeMode() {
+    $('#collaborationFields').classList.toggle('hidden', !$('#enableCollaboration').checked);
+    updateDispatchState();
+  }
+  function setAdvancedMode() {
+    $('#collaborationConfig').classList.toggle('hidden', !$('#enableAdvancedCollaboration').checked);
+    updateDispatchState();
   }
   function refreshAgentBusy() {
     $$('#agentList .status').forEach((node, index) => {
@@ -202,12 +236,14 @@
     state.hub = config;
     if (signature !== state.hubSignature && !state.dirtyConfig) {
       state.hubSignature = signature;
+      renderCollaborationSelectors();
       if (!state.hubLoaded) { state.mode = config.mode_default === 'orchestrated' ? 'orchestrated' : 'direct'; state.hubLoaded = true; }
       renderOrchestratorOptions();
       $('#orchestratorEnabled').checked = Boolean(config.orchestrator_enabled);
       $('#summaryPolicy').value = config.summary_policy || 'auto';
       $('#defaultMode').value = config.mode_default || 'direct';
       $('#defaultDeadline').value = config.deadline_seconds ?? '';
+      $('#maxTasks').value = config.max_tasks ?? 16;
     }
     const stateNode = $('#orchestratorState');
     const words = { enabled: '已启用', disabled: '未启用', invalid: '配置失效' };
@@ -484,6 +520,9 @@
     $('#targetPicks').classList.toggle('targets-disabled', orchestrated);
     $('#targetLabel').innerHTML = orchestrated ? '派发目标 <span>由主 Agent 计划选择</span>' : '接收 Agent <span>可多选，一次并行运行</span>';
     $('#orchestrationOptions').classList.toggle('hidden', !orchestrated);
+    const collaborationSupported = state.hub?.collaboration_supported === true;
+    $('#collaborationSetup').classList.toggle('hidden', !orchestrated || !collaborationSupported);
+    $('#collabUnsupported').classList.toggle('hidden', !orchestrated || collaborationSupported);
     updateDispatchState();
   }
   function updateDispatchState() {
@@ -493,8 +532,12 @@
     $('#startRun').disabled = (orchestrated ? !ready : !hasTargets) || !$('#prompt').value.trim();
     $('#startRun').textContent = orchestrated ? '启动主 Agent 计划 ↑' : '并行派发 ↑';
     $('#dispatchHint').textContent = orchestrated
-      ? ready ? ($('#dispatchPolicy').value === 'auto' ? '主 Agent 生成并校验计划后将自动派发任务。' : '主 Agent 生成并校验计划后，会等待你预览和批准。') : '请先在侧栏启用有效的主 Agent。'
+      ? ready ? ($('#enableAdvancedCollaboration').checked && $('#enableCollaboration').checked ? `先由 ${state.selectedRepresentatives.size} 位代码代表阅读选定文件，再由主 Agent 规划。` : $('#dispatchPolicy').value === 'auto' ? '主 Agent 生成并校验计划后将自动派发任务。' : '主 Agent 生成并校验计划后，会等待你预览和批准。') : '请先在侧栏启用有效的主 Agent。'
       : hasTargets ? `将并行启动 ${state.selectedTargets.size} 个已选 Agent。` : '请选择一个或多个 Agent。';
+    const representativeCount = $('#enableAdvancedCollaboration').checked && $('#enableCollaboration').checked ? state.selectedRepresentatives.size : 0;
+    const maxTasks = state.hub?.max_tasks ?? 16;
+    const remaining = maxTasks - representativeCount - 1;
+    $('#collabTaskBudget').textContent = `当前每轮任务上限 ${maxTasks}；${representativeCount} 位代码代表和 1 个主 Agent 规划任务后，最多可派发 ${Math.max(0, remaining)} 个执行任务。${representativeCount && remaining < 2 ? '若需比较两位 Agent 的结论，请在协作设置中调高上限，至少留出 2 个执行任务名额。' : ''}模型调用次数另有限额。`;
     $('#targetPicks').setAttribute('aria-disabled', String(orchestrated));
   }
   function setMode(mode) {
@@ -511,12 +554,81 @@
     if (seconds === null || seconds < 1 || seconds > 86400) throw new Error('截止时间需晚于现在且不超过 24 小时。');
     return seconds;
   }
+  function boundedInteger(selector, label, min, max) {
+    const value = Number($(selector).value);
+    if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${label}需为 ${min}–${max} 的整数。`);
+    return value;
+  }
+  async function buildCollaborationPayload() {
+    if (state.mode !== 'orchestrated' || state.hub?.collaboration_supported !== true || !$('#enableAdvancedCollaboration').checked) return null;
+    const limits = {
+      max_concurrent_tasks: boundedInteger('#collabMaxConcurrent', '并发模型调用上限', 1, 8),
+      max_context_bytes: boundedInteger('#collabMaxContext', '上下文上限', 1024, 262144),
+      max_calls: boundedInteger('#collabMaxCalls', '全轮模型调用次数上限', 1, 100)
+    };
+    const collaboration = { limits };
+    if ($('#enableCollaboration').checked) {
+      const agentIds = [...state.selectedRepresentatives];
+      if (agentIds.length < 2 || agentIds.length > 3) throw new Error('请选择 2–3 位代码代表。');
+      const version = $('#collabVersion').value.trim();
+      if (!version || version.length > 128) throw new Error('请填写不超过 128 字的源码版本标签。');
+      const files = [...$('#collabFiles').files];
+      if (files.length < 1 || files.length > 32) throw new Error('请选择 1–32 个文本源码文件。');
+      const seen = new Set(), sourceFiles = [];
+      let totalBytes = 0;
+      for (const file of files) {
+        const path = file.name;
+        const foldedPath = path.toLocaleLowerCase();
+        if (!path || path === '.' || path === '..' || /[/\\]/.test(path) || seen.has(foldedPath)) throw new Error('源码文件名必须唯一，且不能包含路径分隔符。');
+        if (file.size > 131072) throw new Error(`${path} 超过单文件 128 KiB 上限。`);
+        seen.add(foldedPath); totalBytes += file.size;
+        if (totalBytes > 262144) throw new Error('所选源码文件合计不得超过 256 KiB。');
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+        if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) throw new Error(`${path} 不是可用的文本文件。`);
+        sourceFiles.push({ path, text });
+      }
+      if (!sourceFiles.some(file => file.text.length)) throw new Error('请选择至少一个有内容的源码文件。');
+      if (totalBytes > limits.max_context_bytes) throw new Error('源码总字节数超过当前上下文上限。');
+      collaboration.source = { version, files: sourceFiles };
+      collaboration.representative_agent_ids = agentIds;
+    }
+    const arbiter = $('#presetArbiter').value;
+    if (arbiter) collaboration.arbiter_agent_id = arbiter;
+    return collaboration;
+  }
   function shortId(id) { return id ? id.slice(0, 8) : ''; }
   function countStatus(tasks, statuses) { return tasks.filter(task => statuses.includes(task.status)).length; }
   function statusLabel(task) { return TaskStatus.label(task); }
+  const RUN_TABS = ['collaboration', 'outputs', 'results'];
+  function setRunTab(name, { focus = false } = {}) {
+    if (!RUN_TABS.includes(name)) return;
+    state.runTab = name;
+    for (const tab of $$('.run-tab')) {
+      const selected = tab.dataset.runTab === name;
+      tab.classList.toggle('active', selected);
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected && focus) tab.focus();
+    }
+    for (const panel of $$('.run-tab-panel')) panel.hidden = panel.id !== `runPanel${name[0].toUpperCase()}${name.slice(1)}`;
+    if (name === 'results') $('#runTabResults').classList.remove('has-update');
+    if (name === 'collaboration') $('#runTabCollaboration').classList.remove('needs-action');
+  }
+  function defaultRunTab(run) {
+    if (['completed', 'failed'].includes(run.status) && ['unresolved', 'needs_human'].includes(run.review_state)) return 'results';
+    if (['completed', 'failed'].includes(run.status) && ['ready', 'partial'].includes(run.summary?.status) && run.summary?.content) return 'results';
+    if (run.status === 'failed' && run.mode === 'orchestrated' && run.plan?.status === 'failed') return 'collaboration';
+    if (run.status === 'completed') return 'outputs';
+    return run.mode === 'orchestrated' ? 'collaboration' : 'outputs';
+  }
   function renderRun(run) {
     state.currentRun = run;
     $('#currentRun').classList.remove('hidden');
+    if (state.runTabRunId !== run.run_id) {
+      state.runTabRunId = run.run_id;
+      state.disputeSignature = null; state.disputeOptionsSignature = null;
+      setRunTab(defaultRunTab(run));
+    }
     $('#runShortId').textContent = shortId(run.run_id);
     $('#runPrompt').textContent = run.prompt || '(无任务描述)';
     $('#runModeLabel').textContent = run.mode === 'orchestrated'
@@ -532,14 +644,30 @@
       deadline.classList.toggle('overdue', run.deadline_state === 'reached' || remaining <= 0);
     } else { deadline.textContent = '未设置截止时间'; deadline.classList.remove('overdue'); }
     const tasks = Array.isArray(run.tasks) ? run.tasks : [];
+    const planningTasks = tasks.filter(task => task.role === 'orchestrator');
+    const outputTasks = tasks.filter(task => !['orchestrator', 'representative', 'arbiter'].includes(task.role));
+    const workerTasks = outputTasks.filter(task => task.role === 'worker');
     const done = tasks.filter(task => TaskStatus.isTerminal(task.status)).length;
-    const succeeded = countStatus(tasks, ['succeeded']);
+    const succeeded = countStatus(outputTasks, ['succeeded']);
     $('#runCountLabel').textContent = `${done} / ${tasks.length} 已结束 · ${succeeded} 条成功回复`;
     $('#runProgressBar').style.width = `${tasks.length ? Math.round(done / tasks.length * 100) : 0}%`;
-    renderTasks(tasks); renderPlan(run); renderRunSummary(run, succeeded, tasks.length);
+    $('#collaborationCount').textContent = run.plan?.status === 'awaiting_approval' ? '待批准' : planningTasks.length ? String(planningTasks.length) : '';
+    $('#outputsCount').textContent = outputTasks.length ? String(outputTasks.length) : '';
+    const summaryBadges = { ready: '已生成', partial: '部分', stale: '待更新', failed: '失败' };
+    const summaryReady = ['ready', 'partial'].includes(run.summary?.status);
+    $('#resultsCount').textContent = ['unresolved', 'needs_human'].includes(run.review_state) ? '待裁决' : summaryBadges[run.summary?.status] || '';
+    $('#runTabResults').classList.toggle('has-update', summaryReady && state.runTab !== 'results');
+    $('#runTabCollaboration').classList.toggle('needs-action', run.plan?.status === 'awaiting_approval' && state.runTab !== 'collaboration');
+    $('#runCollaborationIntro').textContent = run.mode === 'orchestrated'
+      ? '查看任务计划、执行动态和 Agent 间的交流。'
+      : '无主模式没有主 Agent 计划；这里显示任务动态和 Agent 间的交流。';
+    $('#planningRecord').hidden = run.mode !== 'orchestrated';
+    renderTasks(outputTasks, $('#runTasks'), run);
+    renderTasks(planningTasks, $('#planningTasks'), run, { planning: true });
+    renderRepresentatives(run); renderPlan(run); renderGroups(run); renderDisputes(run); renderRunSummary(run, workerTasks); renderReviewResults(run);
     const late = run.deadline_state === 'reached' && done < tasks.length;
     $('#deadlineAlert').classList.toggle('hidden', !late);
-    if (late) $('#deadlineAlert').textContent = `已到截止时间，${tasks.length - done} 个任务仍在执行。截止只触发提醒；迟到回复会继续归入本轮任务。当前已有 ${succeeded}/${tasks.length} 条成功回复。`;
+    if (late) $('#deadlineAlert').textContent = `已到截止时间，${tasks.length - done} 个任务仍在执行。截止只触发提醒；迟到回复会继续归入本轮任务。当前已有 ${succeeded}/${outputTasks.length} 条成功回复。`;
     addToHistory(run.run_id, run.prompt || '未命名任务');
   }
   function renderPlan(run) {
@@ -562,7 +690,7 @@
     for (const [index, task] of (Array.isArray(plan.tasks) ? plan.tasks : []).entries()) {
       const card = document.createElement('article'); card.className = 'plan-task';
       addText(card, 'b', '', `${index + 1}. ${task.title || task.agent_id || '计划任务'}`);
-      addText(card, 'small', '', `Agent：${agentName(task.agent_id)}${task.depends_on?.length ? ` · 依赖 ${task.depends_on.join('、')}` : ''}`);
+      addText(card, 'small', '', `Agent：${agentName(task.agent_id)}${task.group_id ? ` · 分组 ${task.group_id}` : ''}${task.depends_on?.length ? ` · 依赖 ${task.depends_on.join('、')}` : ''}`);
       addText(card, 'p', '', task.prompt || ''); list.append(card);
     }
     const approve = $('#approvePlan');
@@ -570,22 +698,234 @@
     approve.classList.toggle('hidden', !canApprove);
     approve.disabled = !canApprove;
   }
+  function renderRepresentatives(run) {
+    const collaboration = run.collaboration || {};
+    const representatives = Array.isArray(collaboration.representatives) ? collaboration.representatives : [];
+    const selected = Array.isArray(collaboration.representative_agent_ids) ? collaboration.representative_agent_ids : [];
+    const panel = $('#representativePanel'), list = $('#representativeResults'); list.replaceChildren();
+    panel.classList.toggle('hidden', !run.collaboration);
+    if (!run.collaboration) return;
+    const source = collaboration.source || {};
+    const files = Array.isArray(source.files) ? source.files : [];
+    $('#collabSourceMeta').textContent = files.length
+      ? `源码版本：${source.version || '未标注'} · 已提交 ${files.length} 个文本文件：${files.map(file => file.path).join('、')}`
+      : '本轮未启用代码代表，也未提交源码文件。';
+    const limits = collaboration.limits || {};
+    $('#collabBudgetMeta').textContent = `每轮任务数上限 ${run.max_tasks ?? '—'} · 并发模型调用上限 ${limits.max_concurrent_tasks ?? '—'} · 全轮模型调用次数上限 ${limits.max_calls ?? '—'}（已使用 ${collaboration.calls_used ?? '—'}） · 上下文上限 ${limits.max_context_bytes ?? '—'} 字节`;
+    for (const agentId of selected) {
+      const representative = representatives.find(item => item.agent_id === agentId) || {};
+      const card = document.createElement('article'); card.className = 'collab-info-card';
+      addText(card, 'b', '', agentName(agentId));
+      addText(card, 'small', 'collab-meta', `代码代表 · ${representative.status ? statusLabel(representative) : '等待开始'}`);
+      const explanation = representative.explanation;
+      if (explanation && typeof explanation === 'object') {
+        if (explanation.summary) addText(card, 'p', '', explanation.summary);
+        if (explanation.source_version) addText(card, 'p', 'collab-meta', `对应源码版本：${explanation.source_version}`);
+        addText(card, 'p', 'collab-meta', explanation.reported_verified ? '代表自述已验证；Hub 尚未独立验证。' : '代表未声称验证通过；仍需独立核验。');
+        for (const finding of Array.isArray(explanation.evidence) ? explanation.evidence : []) {
+          addText(card, 'p', 'collab-finding', `${finding.path} 第 ${finding.line_start}–${finding.line_end} 行 · ${finding.note}`);
+        }
+        for (const unknown of Array.isArray(explanation.unknowns) ? explanation.unknowns : []) addText(card, 'p', 'collab-meta', `待确认：${unknown}`);
+      } else if (typeof explanation === 'string') addText(card, 'p', '', explanation);
+      else addText(card, 'p', 'muted', '代码说明尚未就绪。');
+      if (representative.error?.message) addText(card, 'p', 'task-error', representative.error.message);
+      const task = (run.tasks || []).find(item => item.task_id === representative.task_id);
+      if (task?.response_id) {
+        const button = addText(card, 'button', 'response-link', '展开代表原文'); button.type = 'button';
+        button.addEventListener('click', () => showResponse(task));
+      }
+      list.append(card);
+    }
+  }
+  function renderGroups(run) {
+    const groups = Array.isArray(run.groups) && run.groups.length ? run.groups : Array.isArray(run.plan?.groups) ? run.plan.groups : [];
+    const panel = $('#groupPanel'), list = $('#groupList'); list.replaceChildren();
+    panel.classList.toggle('hidden', !groups.length);
+    for (const group of groups) {
+      const card = document.createElement('article'); card.className = 'collab-info-card';
+      addText(card, 'b', '', group.group_id || '未命名分组');
+      addText(card, 'p', '', `组长：${agentName(group.leader_agent_id)}`);
+      addText(card, 'p', 'collab-meta', `成员：${(group.member_agent_ids || []).map(agentName).join('、') || '尚无成员'}`);
+      list.append(card);
+    }
+  }
+  function sourceFilesFor(run) { return Array.isArray(run.collaboration?.source?.files) ? run.collaboration.source.files : []; }
+  function fillSelect(select, rows, placeholder, selected = '') {
+    select.replaceChildren();
+    const empty = document.createElement('option'); empty.value = ''; empty.textContent = placeholder; select.append(empty);
+    for (const [value, label] of rows) {
+      const option = document.createElement('option'); option.value = value; option.textContent = label; select.append(option);
+    }
+    select.value = rows.some(([value]) => value === selected) ? selected : '';
+  }
+  function eligibleDisputeTasks(run) {
+    return (Array.isArray(run.tasks) ? run.tasks : []).filter(task => task.role === 'worker' && task.status === 'succeeded' && task.response_id);
+  }
+  function eligibleArbiters(run, left, right) {
+    if (!left || !right || left.agent_id === right.agent_id) return [];
+    const ids = new Set();
+    if (run.collaboration?.arbiter_agent_id) ids.add(run.collaboration.arbiter_agent_id);
+    if (run.orchestrator_agent_id) ids.add(run.orchestrator_agent_id);
+    if (left.group_id && left.group_id === right.group_id) {
+      const group = (run.groups || []).find(item => item.group_id === left.group_id);
+      if (group?.leader_agent_id) ids.add(group.leader_agent_id);
+    }
+    ids.delete(left.agent_id); ids.delete(right.agent_id);
+    return [...ids].map(id => [id, agentName(id)]);
+  }
+  function refreshDisputeArbiters() {
+    const run = state.currentRun;
+    if (!run) return;
+    const left = eligibleDisputeTasks(run).find(task => task.task_id === $('#disputeLeft').value);
+    const right = eligibleDisputeTasks(run).find(task => task.task_id === $('#disputeRight').value);
+    const arbiter = $('#disputeArbiter');
+    fillSelect(arbiter, eligibleArbiters(run, left, right), left && right && left.agent_id === right.agent_id ? '请选择不同 Agent 的结论' : '选择合格的上级 Agent', arbiter.value);
+  }
+  function renderDisputeOptions(run) {
+    const eligible = eligibleDisputeTasks(run);
+    const signature = JSON.stringify([run.run_id, eligible.map(task => [task.task_id, task.agent_id]), sourceFilesFor(run).map(file => file.path)]);
+    if (state.disputeOptionsSignature === signature) return;
+    state.disputeOptionsSignature = signature;
+    const rows = eligible.map(task => [task.task_id, `${agentName(task.agent_id)} · 任务 ${task.sequence ?? shortId(task.task_id)}`]);
+    for (const selector of ['#disputeLeft', '#disputeRight']) fillSelect($(selector), rows, '选择已完成任务', $(selector).value);
+    const files = sourceFilesFor(run);
+    fillSelect($('#disputeSourcePath'), files.map(file => [file.path, file.path]), '选择已提交的源码文件', $('#disputeSourcePath').value);
+    $('#disputeSourceRow').classList.toggle('hidden', !files.length);
+    $('#disputeLineStartRow').classList.toggle('hidden', !files.length);
+    $('#disputeLineEndRow').classList.toggle('hidden', !files.length);
+    $('#disputeCreate').classList.toggle('hidden', eligible.length < 2 || state.hub?.collaboration_supported !== true);
+    refreshDisputeArbiters();
+  }
+  function evidenceItem(note, path, lineStart, lineEnd, files) {
+    const description = String(note || '').trim();
+    if (!description) throw new Error('请填写可复核的证据说明。');
+    if (!files.length) return { note: description };
+    if (!files.some(file => file.path === path)) throw new Error('请选择本轮已提交的证据文件。');
+    const start = Number(lineStart), end = Number(lineEnd);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) throw new Error('请填写有效的证据起止行。');
+    return { path, line_start: start, line_end: end, note: description };
+  }
+  function addEvidenceFields(form, files) {
+    const noteLabel = addText(form, 'label', 'form-field wide', '补充证据说明');
+    const note = document.createElement('textarea'); note.name = 'note'; note.required = true; note.rows = 3; noteLabel.append(note);
+    if (!files.length) return;
+    const pathLabel = addText(form, 'label', 'form-field', '证据文件');
+    const path = document.createElement('select'); path.name = 'path'; path.required = true;
+    fillSelect(path, files.map(file => [file.path, file.path]), '选择源码文件'); pathLabel.append(path);
+    for (const [name, label] of [['line_start', '起始行'], ['line_end', '结束行']]) {
+      const wrapper = addText(form, 'label', 'form-field', label);
+      const input = document.createElement('input'); input.name = name; input.type = 'number'; input.min = '1'; input.required = true; wrapper.append(input);
+    }
+  }
+  function addResponseAction(parent, task, label) {
+    if (!task?.response_id) return;
+    const button = addText(parent, 'button', 'response-link', label); button.type = 'button';
+    button.addEventListener('click', () => showResponse(task));
+  }
+  function renderDisputes(run) {
+    const panel = $('#disputePanel'), list = $('#disputeList');
+    const disputes = Array.isArray(run.disputes) ? run.disputes : [];
+    panel.classList.toggle('hidden', !run.collaboration && !disputes.length);
+    if (!run.collaboration && !disputes.length) return;
+    renderDisputeOptions(run);
+    const signature = JSON.stringify([run.run_id, disputes]);
+    if (state.disputeSignature === signature) return;
+    state.disputeSignature = signature; list.replaceChildren();
+    if (!disputes.length) addText(list, 'p', 'muted', '尚无争议。分组任务完成后，可比较两位 Agent 的结论。');
+    for (const dispute of disputes) {
+      const card = document.createElement('article'); card.className = 'collab-info-card dispute-card';
+      addText(card, 'b', '', `争议 ${shortId(dispute.dispute_id)} · ${disputeStatusLabel(dispute.status)}`);
+      addText(card, 'p', '', dispute.claim || '未提供争议说明。');
+      const left = (run.tasks || []).find(task => task.task_id === dispute.left_task_id);
+      const right = (run.tasks || []).find(task => task.task_id === dispute.right_task_id);
+      addText(card, 'p', 'collab-meta', `结论 A：${agentName(left?.agent_id)} · 结论 B：${agentName(right?.agent_id)} · 仲裁：${agentName(dispute.arbiter_agent_id)}`);
+      addResponseAction(card, left, '查看结论 A 原文'); addResponseAction(card, right, '查看结论 B 原文');
+      for (const item of Array.isArray(dispute.evidence) ? dispute.evidence : []) {
+        addText(card, 'p', 'collab-finding', `${item.path ? `${item.path} 第 ${item.line_start}–${item.line_end} 行 · ` : ''}${item.note || ''}`);
+      }
+      for (const [index, round] of (Array.isArray(dispute.rounds) ? dispute.rounds : []).entries()) {
+        addText(card, 'p', 'collab-meta', `第 ${index + 1} 轮：${round.verdict?.rationale || round.rationale || disputeStatusLabel(round.verdict?.status)}`);
+      }
+      if (dispute.status === 'open' && state.hub?.collaboration_supported === true) {
+        const button = addText(card, 'button', 'secondary-button', '发起上级仲裁'); button.type = 'button';
+        button.addEventListener('click', () => reviewDispute(run.run_id, dispute.dispute_id, button));
+      } else if (dispute.status === 'needs_evidence' && state.hub?.collaboration_supported === true) {
+        const form = document.createElement('form'); form.className = 'dispute-action-form';
+        addEvidenceFields(form, sourceFilesFor(run));
+        const submit = addText(form, 'button', 'secondary-button', '补证据并再审'); submit.type = 'submit';
+        form.addEventListener('submit', event => { event.preventDefault(); supplementDispute(run.run_id, dispute.dispute_id, form); });
+        card.append(form);
+      } else if (dispute.status === 'needs_human' && state.hub?.collaboration_supported === true) {
+        const form = document.createElement('form'); form.className = 'dispute-action-form';
+        const label = addText(form, 'label', 'form-field', '人工采纳');
+        const choice = document.createElement('select'); choice.name = 'selected_response_id'; choice.required = true;
+        fillSelect(choice, [[dispute.left_response_id, '结论 A'], [dispute.right_response_id, '结论 B']], '选择一方'); label.append(choice);
+        const reasonLabel = addText(form, 'label', 'form-field wide', '决定依据');
+        const reason = document.createElement('textarea'); reason.name = 'rationale'; reason.required = true; reason.rows = 3; reasonLabel.append(reason);
+        const submit = addText(form, 'button', 'secondary-button', '记录人工决定'); submit.type = 'submit';
+        form.addEventListener('submit', event => { event.preventDefault(); decideDispute(run.run_id, dispute.dispute_id, form); });
+        card.append(form);
+      } else if (dispute.status === 'resolved') {
+        const resolution = dispute.resolution || {};
+        const selected = selectedDisputeResponse(dispute);
+        addText(card, 'p', 'collab-resolution', `已采纳 ${selected === dispute.left_response_id ? '结论 A' : selected === dispute.right_response_id ? '结论 B' : '指定结论'}${resolution.rationale ? ` · ${resolution.rationale}` : ''}`);
+      }
+      list.append(card);
+    }
+  }
+  function reviewStateLabel(value) {
+    return ({ clear: '暂无争议', unresolved: '有未决争议', resolved: '争议已处理', needs_human: '需要人工决定' })[value] || '审阅状态待更新';
+  }
+  function disputeStatusLabel(value) {
+    return ({ open: '待仲裁', reviewing: '仲裁中', needs_evidence: '等待补证据', needs_human: '等待人工决定', resolved: '已处理' })[value] || value || '状态未知';
+  }
+  function selectedDisputeResponse(dispute) {
+    return dispute.selected_response_id || dispute.resolution?.selected_response_id || dispute.decision?.selected_response_id || null;
+  }
+  function renderReviewResults(run) {
+    const disputes = Array.isArray(run.disputes) ? run.disputes : [];
+    const panel = $('#resultReviewPanel'), list = $('#resultReviewList'); list.replaceChildren();
+    panel.classList.toggle('hidden', !run.collaboration && !disputes.length);
+    if (panel.classList.contains('hidden')) return;
+    addText(list, 'p', 'collab-review-state', reviewStateLabel(run.review_state));
+    if (!disputes.length) { addText(list, 'p', 'muted', '当前没有提交的同级争议。'); return; }
+    for (const dispute of disputes) {
+      const card = document.createElement('article'); card.className = 'collab-info-card';
+      addText(card, 'b', '', `争议 ${shortId(dispute.dispute_id)} · ${disputeStatusLabel(dispute.status)}`);
+      addText(card, 'p', '', dispute.claim || '未提供争议说明。');
+      const selected = selectedDisputeResponse(dispute);
+      if (dispute.status === 'resolved' && selected) {
+        const side = selected === dispute.left_response_id ? '结论 A' : selected === dispute.right_response_id ? '结论 B' : '指定结论';
+        addText(card, 'p', 'collab-resolution', `已采纳：${side}。原始双方结论保留在协作记录中。`);
+      } else if (dispute.status === 'resolved') addText(card, 'p', 'collab-resolution', '已裁决；请在协作记录查看裁决依据。');
+      else addText(card, 'p', 'collab-unresolved', '此争议仍未完成裁决，不能视为最终结论。');
+      list.append(card);
+    }
+  }
   function formatDuration(value) {
     const seconds = Math.max(0, Math.floor(value));
     const hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds % 3600 / 60);
     return hours ? `${hours} 小时 ${minutes} 分` : `${minutes} 分`;
   }
-  function renderTasks(tasks) {
-    const list = $('#runTasks'); list.replaceChildren();
-    if (!tasks.length) { addText(list, 'p', 'empty-events', '本轮尚未创建任务。'); return; }
+  function renderTasks(tasks, list, run, { planning = false } = {}) {
+    list.replaceChildren();
+    if (!tasks.length) {
+      const message = planning
+        ? run.mode === 'orchestrated' ? '主 Agent 规划任务尚未建立。' : '无主模式没有主 Agent 规划任务；可在本轮动态查看实际通信与状态事件。'
+        : run.mode === 'orchestrated' ? '计划尚未派发执行任务。批准计划后，Agent 输出会显示在这里。' : '本轮尚未创建执行任务。';
+      addText(list, 'p', 'empty-events', message); return;
+    }
     for (const task of tasks) {
       const safeStatus = /^[a-z_]+$/.test(task.status || '') ? task.status : 'unknown';
       const row = document.createElement('article'); row.className = `run-task status-${safeStatus}`;
       row.append(makeAvatar(task.agent_id, true));
       const meta = document.createElement('div'); meta.className = 'run-task-meta';
       addText(meta, 'b', '', agentName(task.agent_id));
-      const roleLabel = task.parent_task_id ? '本轮子 Agent' : task.role === 'orchestrator' ? '主 Agent' : task.role === 'orchestrator_reply' ? '主 Agent 回复' : 'Agent';
-      addText(meta, 'small', 'run-task-role', `${roleLabel} · 任务 ${task.sequence ?? '—'} · ${task.started_at ? dateLabel(task.started_at) : '尚未启动'}`);
+      const roleLabel = planning ? '主 Agent · 规划'
+        : task.role === 'orchestrator_reply' ? '主 Agent · 执行回复'
+          : run.child_agents?.[task.agent_id] ? '本轮子 Agent'
+            : task.parent_task_id ? '派生任务' : 'Agent';
+      addText(meta, 'small', 'run-task-role', `${roleLabel}${task.group_id ? ` · 分组 ${task.group_id}` : ''} · 任务 ${task.sequence ?? '—'} · ${task.started_at ? dateLabel(task.started_at) : '尚未启动'}`);
       row.append(meta);
       const statePill = addText(row, 'span', `task-state ${task.overdue ? 'overdue' : task.status}`, statusLabel(task));
       statePill.setAttribute('aria-label', `任务状态：${statusLabel(task)}`);
@@ -624,20 +964,35 @@
     }
   }
   function agentName(id) { return state.agents.find(agent => agent.id === id)?.name || id || '未知 Agent'; }
-  function renderRunSummary(run, succeeded, total) {
+  function renderRunSummary(run, workerTasks) {
     const summary = run.summary || { status: 'unavailable', reason: 'No model summary adapter configured' };
-    const statusLabels = { ready: '完整模型摘要', partial: '部分模型摘要', stale: '摘要待更新', pending: '生成中', failed: '生成失败', unavailable: '模型摘要未就绪' };
+    const statusLabels = { ready: '完整模型摘要', partial: '部分模型摘要', stale: '摘要待更新', pending: '生成中', failed: '生成失败', unavailable: '模型摘要未就绪', blocked_review: '等待争议处理' };
     $('#summaryState').textContent = statusLabels[summary.status] || '模型摘要状态未知';
     $('#summaryState').className = `summary-state ${summary.status || 'unknown'}`;
-    if (summary.content) $('#summaryContent').textContent = summary.content;
+    if (['unresolved', 'needs_human'].includes(run.review_state) || summary.status === 'blocked_review') $('#summaryContent').textContent = '本轮仍有未决争议。请先在“思考与协作”处理证据、仲裁或人工决定；此处不能视为最终结论。';
+    else if (summary.content) $('#summaryContent').textContent = summary.content;
     else if (summary.status === 'stale') $('#summaryContent').textContent = '有新回复到达，当前摘要已过期。请重新生成摘要以包含最新回复。';
     else if (summary.status === 'failed') $('#summaryContent').textContent = '模型摘要生成失败；逐条 Agent 回复仍可查看和展开。';
-    else if (summary.status === 'pending') $('#summaryContent').textContent = `正在汇总当前 ${succeeded}/${total} 条成功回复…`;
+    else if (summary.status === 'pending') $('#summaryContent').textContent = `正在汇总当前 ${summary.task_ids?.length || 0}/${workerTasks.length} 个已结束执行任务…`;
     else $('#summaryContent').textContent = summary.reason || '本轮未配置可用的摘要 Agent。逐条任务回复和原始全文仍可查看。';
-    $('#summaryHelp').textContent = summary.source_run_revision != null
-      ? `覆盖 ${summary.task_ids?.length || 0} 个任务 · 生成于 ${dateLabel(summary.generated_at)} · 新回复可能使摘要过期。`
+    $('#summaryHelp').textContent = ['unresolved', 'needs_human'].includes(run.review_state)
+      ? '双方原始结论和证据保留在“思考与协作”。解决争议后再查看更新的模型汇总。'
+      : summary.source_run_revision != null
+      ? `覆盖 ${summary.task_ids?.length || 0}/${workerTasks.length} 个执行任务 · 生成于 ${dateLabel(summary.generated_at)} · 新回复可能使摘要过期。`
       : '摘要由模型生成；不会把 Agent 原始回复伪装成摘要。';
+    const outputTasks = (Array.isArray(run.tasks) ? run.tasks : []).filter(task => task.role !== 'orchestrator');
+    const problems = outputTasks.filter(task => !['representative', 'arbiter'].includes(task.role) && TaskStatus.isTerminal(task.status) && task.status !== 'succeeded');
+    const representativeProblems = outputTasks.filter(task => task.role === 'representative' && TaskStatus.isTerminal(task.status) && task.status !== 'succeeded');
+    const notes = [];
+    if (run.plan?.status === 'failed') notes.push(`主 Agent 计划失败${run.plan.error?.message ? `：${run.plan.error.message}` : '。'}`);
+    if (problems.length) notes.push(`${problems.length} 个执行任务未成功：${problems.map(task => `${agentName(task.agent_id)}（${statusLabel(task)}）`).join('、')}。`);
+    if (representativeProblems.length) notes.push(`${representativeProblems.length} 位代码代表未成功：${representativeProblems.map(task => `${agentName(task.agent_id)}（${statusLabel(task)}）`).join('、')}。`);
+    if (outputTasks.some(task => task.role === 'orchestrator_reply')) notes.push('主 Agent 的执行回复不计入本轮汇总，可在 Agent 输出查看。');
+    if (summary.error?.message) notes.push(`汇总异常：${summary.error.message}`);
+    if (['unresolved', 'needs_human'].includes(run.review_state)) notes.push('争议未决，当前汇总不可作为最终结果。');
+    $('#summaryExceptions').textContent = notes.join(' ');
     $('#requestSummary').textContent = summary.status === 'stale' ? '更新模型摘要' : summary.status === 'partial' ? '更新当前摘要' : '请求模型摘要';
+    $('#requestSummary').disabled = ['unresolved', 'needs_human'].includes(run.review_state);
   }
   function renderEvents() {
     const list = $('#eventList'); list.replaceChildren();
@@ -671,15 +1026,32 @@
         addText(details, 'summary', '', event.execute ? '查看派发的子任务提示' : '查看相关子任务提示');
         addText(details, 'p', 'event-text', event.task_prompt); body.append(details);
       }
+      if (event.kind === 'response' && event.task_id) {
+        const task = state.currentRun?.tasks?.find(row => row.task_id === event.task_id);
+        if (task) {
+          const planning = task.role === 'orchestrator';
+          const representative = task.role === 'representative', arbiter = task.role === 'arbiter';
+          const jump = addText(body, 'button', 'event-jump', planning ? '查看规划原始记录' : representative ? '查看代码代表' : arbiter ? '查看争议与仲裁' : '查看 Agent 输出');
+          jump.type = 'button';
+          jump.addEventListener('click', () => {
+            setRunTab(planning || representative || arbiter ? 'collaboration' : 'outputs', { focus: true });
+            if (planning) $('#planningRecord').open = true;
+            if (representative) $('#representativePanel').focus();
+            if (arbiter) $('#disputePanel').focus();
+          });
+        }
+      }
       if (event.task_id) addText(body, 'small', 'event-task-id', `任务 ${shortId(event.task_id)}`);
       item.append(body); list.append(item);
     }
   }
   function eventDescription(event) {
     if (event.kind === 'status') return `任务状态：${event.state || '已更新'}${event.error_category ? ` · ${event.error_category}` : ''}`;
-    if (event.kind === 'response') return `回复已${event.state === 'succeeded' ? '完成' : '更新'}。可在上方任务列表打开原始全文。`;
+    if (event.kind === 'response') return `回复已${event.state === 'succeeded' ? '完成' : '更新'}。`;
     if (event.kind === 'deadline') return '本轮截止时间已到；未完成任务继续运行，迟到回复仍会归入本轮。';
     if (event.kind === 'summary') return `模型摘要状态：${event.state || '已更新'}`;
+    if (event.kind === 'dispute') return `争议状态：${disputeStatusLabel(event.state)}。`;
+    if (event.kind === 'review') return `仲裁状态：${disputeStatusLabel(event.state)}。`;
     if (event.kind === 'rejected') return `协作请求被拒绝：${event.reason || '未通过策略校验'}`;
     if (event.kind === 'dispatch') return `任务已派发给 ${event.to_agent_id ? agentName(event.to_agent_id) : '目标 Agent'}。`;
     return '本轮收到一条状态事件。';
@@ -745,15 +1117,24 @@
     catch (error) { showError(error); $('#runDeadline').focus(); return; }
     if (state.mode === 'direct' && !state.selectedTargets.size) { showError(new Error('请至少选择一个已注册 Agent。')); return; }
     if (state.mode === 'orchestrated' && state.hub?.orchestrator_state !== 'enabled') { showError(new Error('请先启用有效的主 Agent。')); return; }
+    let collaboration;
+    try { collaboration = await buildCollaborationPayload(); }
+    catch (error) { showError(error); $('#collaborationSetup').open = true; return; }
     $('#startRun').disabled = true; $('#startRun').textContent = '正在提交…';
     const idempotencyKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
     const body = state.mode === 'orchestrated'
       ? { mode: 'orchestrated', dispatch_policy: $('#dispatchPolicy').value, prompt }
       : { mode: 'direct', prompt, target_agent_ids: [...state.selectedTargets] };
     if (deadlineSeconds != null) body.deadline_seconds = deadlineSeconds;
+    if (collaboration) body.collaboration = collaboration;
     try {
       const accepted = await api('/api/runs', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) });
       $('#prompt').value = '';
+      if (collaboration) {
+        $('#collabFiles').value = ''; $('#collabVersion').value = ''; $('#enableCollaboration').checked = false; $('#enableAdvancedCollaboration').checked = false;
+        state.selectedRepresentatives.clear(); $('#presetArbiter').value = '';
+        $('#collaborationSetup').open = false; setRepresentativeMode(); setAdvancedMode(); renderCollaborationSelectors(); renderCollabFileList();
+      }
       state.currentRunId = accepted.run_id; state.events = []; state.eventCursor = 0;
       await selectRun(accepted.run_id, { silent: true });
       toast(state.mode === 'orchestrated' ? `主 Agent 计划已开始 · ${agentName(state.hub.orchestrator_agent_id)}` : `本轮任务已受理 · ${accepted.accepted_tasks?.length || 0} 个 Agent`);
@@ -814,6 +1195,10 @@
     clearError(); const agentId = $('#orchestratorSelect').value || null;
     const deadlineValue = $('#defaultDeadline').value.trim();
     const deadlineSeconds = deadlineValue ? Number(deadlineValue) : null;
+    const maxTasksValue = Number($('#maxTasks').value);
+    if (!Number.isInteger(maxTasksValue) || maxTasksValue < 1 || maxTasksValue > 100) {
+      showError(new Error('每轮任务数上限需为 1 至 100。')); $('#maxTasks').focus(); return;
+    }
     if (deadlineSeconds != null && (!Number.isInteger(deadlineSeconds) || deadlineSeconds < 1 || deadlineSeconds > 86400)) {
       showError(new Error('默认截止时间需为 1 至 86400 秒。')); $('#defaultDeadline').focus(); return;
     }
@@ -822,7 +1207,7 @@
       const result = await api('/api/config/hub', { method: 'PUT', body: JSON.stringify({
         orchestrator_agent_id: agentId, orchestrator_enabled: $('#orchestratorEnabled').checked,
         summary_agent_id: $('#summaryAgentSelect').value || null, summary_policy: $('#summaryPolicy').value,
-        mode_default: $('#defaultMode').value, deadline_seconds: deadlineSeconds
+        mode_default: $('#defaultMode').value, deadline_seconds: deadlineSeconds, max_tasks: maxTasksValue
       }) });
       state.dirtyConfig = false; renderConfig(result.config); formatDeadlineInput(result.config.deadline_seconds);
       toast('主 Agent 设置已保存；已创建任务的模式与 Agent 快照不会改变'); clearError();
@@ -830,7 +1215,7 @@
     finally { $('#saveConfig').disabled = false; }
   }
   async function requestSummary() {
-    if (!state.currentRunId) return;
+    if (!state.currentRunId || ['unresolved', 'needs_human'].includes(state.currentRun?.review_state)) return;
     $('#requestSummary').disabled = true; clearError();
     try {
       await api(`/api/runs/${encodeURIComponent(state.currentRunId)}/summary`, { method: 'POST', body: '{}' });
@@ -844,6 +1229,68 @@
       } else showError(error);
     } finally { $('#requestSummary').disabled = false; }
   }
+  async function reviewDispute(runId, disputeId, button) {
+    button.disabled = true; clearError();
+    try {
+      await api(`/api/runs/${encodeURIComponent(runId)}/disputes/${encodeURIComponent(disputeId)}/review`, { method: 'POST', body: '{}' });
+      await refreshRun(); toast('已发起仲裁，结果会自动更新。');
+    } catch (error) { showError(error); }
+    finally { button.disabled = false; }
+  }
+  async function submitDispute(event) {
+    event.preventDefault(); clearError();
+    const run = state.currentRun;
+    if (!run?.collaboration) return;
+    const tasks = eligibleDisputeTasks(run);
+    const left = tasks.find(task => task.task_id === $('#disputeLeft').value);
+    const right = tasks.find(task => task.task_id === $('#disputeRight').value);
+    const arbiter = $('#disputeArbiter').value;
+    if (!left || !right || left.task_id === right.task_id || left.agent_id === right.agent_id) { showError(new Error('请选两位不同 Agent 的成功执行任务。')); return; }
+    if (!eligibleArbiters(run, left, right).some(([id]) => id === arbiter)) { showError(new Error('请选择与争议双方不同的合格上级 Agent。')); return; }
+    let evidence;
+    try { evidence = [evidenceItem($('#disputeEvidence').value, $('#disputeSourcePath').value, $('#disputeLineStart').value, $('#disputeLineEnd').value, sourceFilesFor(run))]; }
+    catch (error) { showError(error); return; }
+    const claim = $('#disputeClaim').value.trim();
+    if (!claim) { showError(new Error('请填写争议说明。')); return; }
+    const button = $('#disputeForm [type="submit"]'); button.disabled = true;
+    try {
+      await api(`/api/runs/${encodeURIComponent(run.run_id)}/disputes`, { method: 'POST', body: JSON.stringify({
+        left_task_id: left.task_id, right_task_id: right.task_id, arbiter_agent_id: arbiter, claim, evidence
+      }) });
+      $('#disputeForm').reset(); $('#disputeCreate').open = false;
+      await refreshRun(); toast('争议已记录，可发起上级仲裁。');
+    } catch (error) { showError(error); }
+    finally { button.disabled = false; }
+  }
+  async function supplementDispute(runId, disputeId, form) {
+    clearError();
+    const files = sourceFilesFor(state.currentRun || {});
+    let evidence;
+    try { evidence = [evidenceItem(form.elements.note.value, form.elements.path?.value, form.elements.line_start?.value, form.elements.line_end?.value, files)]; }
+    catch (error) { showError(error); return; }
+    const button = form.querySelector('[type="submit"]'); button.disabled = true;
+    try {
+      await api(`/api/runs/${encodeURIComponent(runId)}/disputes/${encodeURIComponent(disputeId)}/evidence`, { method: 'POST', body: JSON.stringify({ evidence }) });
+      await api(`/api/runs/${encodeURIComponent(runId)}/disputes/${encodeURIComponent(disputeId)}/review`, { method: 'POST', body: '{}' });
+      await refreshRun(); toast('补充证据已提交，并已发起再审。');
+    } catch (error) { showError(error); await refreshRun(); }
+    finally { button.disabled = false; }
+  }
+  async function decideDispute(runId, disputeId, form) {
+    clearError();
+    const dispute = state.currentRun?.disputes?.find(item => item.dispute_id === disputeId);
+    const selected_response_id = form.elements.selected_response_id.value;
+    const rationale = form.elements.rationale.value.trim();
+    if (!dispute || ![dispute.left_response_id, dispute.right_response_id].includes(selected_response_id) || !rationale) {
+      showError(new Error('请选择结论并填写人工决定依据。')); return;
+    }
+    const button = form.querySelector('[type="submit"]'); button.disabled = true;
+    try {
+      await api(`/api/runs/${encodeURIComponent(runId)}/disputes/${encodeURIComponent(disputeId)}/human-decision`, { method: 'POST', body: JSON.stringify({ selected_response_id, rationale }) });
+      await refreshRun(); toast('人工决定已记录。');
+    } catch (error) { showError(error); }
+    finally { button.disabled = false; }
+  }
   async function onResponseClick(event) {
     const button = event.target.closest('[data-agent-id]');
     if (!button) return;
@@ -855,7 +1302,41 @@
     const mark = $('.target-check', button); if (mark) mark.textContent = selected ? '✓' : '+';
     updateDispatchState();
   }
+  function bindRunTabs() {
+    $$('.run-tab').forEach(tab => tab.addEventListener('click', () => setRunTab(tab.dataset.runTab)));
+    $('.run-tabs').addEventListener('keydown', event => {
+      const tab = event.target.closest('.run-tab');
+      if (!tab || !$('.run-tabs').contains(tab)) return;
+      const index = RUN_TABS.indexOf(tab.dataset.runTab);
+      let next = index;
+      if (event.key === 'ArrowRight') next = (index + 1) % RUN_TABS.length;
+      else if (event.key === 'ArrowLeft') next = (index - 1 + RUN_TABS.length) % RUN_TABS.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = RUN_TABS.length - 1;
+      else if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      setRunTab(RUN_TABS[next], { focus: true });
+    });
+  }
+  function bindCollaborationEvents() {
+    $('#enableAdvancedCollaboration').addEventListener('change', setAdvancedMode);
+    $('#enableCollaboration').addEventListener('change', setRepresentativeMode);
+    $('#collabFiles').addEventListener('change', renderCollabFileList);
+    $('#representativePicks').addEventListener('click', event => {
+      const button = event.target.closest('[data-agent-id]');
+      if (!button) return;
+      const id = button.dataset.agentId;
+      if (state.selectedRepresentatives.has(id)) state.selectedRepresentatives.delete(id);
+      else if (state.selectedRepresentatives.size < 3) state.selectedRepresentatives.add(id);
+      else { toast('最多选择 3 位代码代表。'); return; }
+      renderCollaborationSelectors(); updateDispatchState();
+    });
+    $('#disputeLeft').addEventListener('change', refreshDisputeArbiters);
+    $('#disputeRight').addEventListener('change', refreshDisputeArbiters);
+    $('#disputeForm').addEventListener('submit', submitDispute);
+  }
   function bindEvents() {
+    bindRunTabs(); bindCollaborationEvents();
     $('#agentList').addEventListener('click', onResponseClick);
     $('#targetPicks').addEventListener('click', onResponseClick);
     $('#prompt').addEventListener('input', updateDispatchState);
@@ -865,6 +1346,7 @@
       $(selector).addEventListener('change', () => { state.dirtyConfig = true; $('#configMessage').textContent = '有未保存的 Hub 设置。'; });
     });
     $('#defaultDeadline').addEventListener('input', () => { state.dirtyConfig = true; $('#configMessage').textContent = '有未保存的 Hub 设置。'; });
+    $('#maxTasks').addEventListener('input', () => { state.dirtyConfig = true; $('#configMessage').textContent = '有未保存的 Hub 设置。'; });
     $$('.mode-option').forEach(button => button.addEventListener('click', () => setMode(button.dataset.mode)));
     $$('.filter').forEach(button => button.addEventListener('click', () => {
       state.relation = button.dataset.relation;

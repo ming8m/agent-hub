@@ -117,8 +117,8 @@ def validate_plan(raw_plan: str | Mapping[str, object], registered_agent_ids: Se
             raise ProtocolError("plan exceeds byte limit")
     else:
         raise ProtocolError("plan must be a JSON object")
-    if not isinstance(value, dict) or not {"summary", "tasks"} <= set(value) or set(value) - {"summary", "tasks", "questions", "create_agents"}:
-        raise ProtocolError("plan must contain summary and tasks, with optional questions and create_agents")
+    if not isinstance(value, dict) or not {"summary", "tasks"} <= set(value) or set(value) - {"summary", "tasks", "questions", "create_agents", "groups"}:
+        raise ProtocolError("plan must contain summary and tasks, with optional questions, create_agents and groups")
     summary, tasks, questions = value["summary"], value["tasks"], value.get("questions", [])
     create_agents = value.get("create_agents", [])
     if type(max_agents) is not int or not 0 <= max_agents <= 100:
@@ -159,11 +159,32 @@ def validate_plan(raw_plan: str | Mapping[str, object], registered_agent_ids: Se
         clean_agents.append({"agent_id": agent_id, "template_id": template_id})
     allowed_task_agents = known_agents | child_ids
 
+    groups = value.get("groups", [])
+    if not isinstance(groups, list) or len(groups) > max_tasks:
+        raise ProtocolError("groups must be a bounded array")
+    clean_groups, group_members, member_groups = [], {}, {}
+    for group in groups:
+        if not isinstance(group, dict) or set(group) != {"group_id", "leader_agent_id", "member_agent_ids"}:
+            raise ProtocolError("group fields are invalid")
+        gid, leader, members = group["group_id"], group["leader_agent_id"], group["member_agent_ids"]
+        if not isinstance(gid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", gid) or gid in group_members:
+            raise ProtocolError("group_id must be unique and valid")
+        if (not isinstance(leader, str) or leader not in allowed_task_agents or
+                not isinstance(members, list) or not members or
+                any(not isinstance(a, str) or a not in allowed_task_agents for a in members) or
+                len(set(members)) != len(members) or leader not in members):
+            raise ProtocolError("group leader and members must be valid plan agents")
+        if any(a in member_groups for a in members):
+            raise ProtocolError("an agent may belong to only one group")
+        group_members[gid] = set(members)
+        member_groups.update({a: gid for a in members})
+        clean_groups.append({"group_id": gid, "leader_agent_id": leader, "member_agent_ids": list(members)})
     clean_tasks = []
     ids = set()
     for task in tasks:
-        if not isinstance(task, dict) or set(task) != {"task_id", "agent_id", "title", "prompt", "depends_on"}:
-            raise ProtocolError("each task must contain exactly task_id, agent_id, title, prompt, depends_on")
+        if not isinstance(task, dict) or set(task) not in ({"task_id", "agent_id", "title", "prompt", "depends_on"},
+                                                           {"task_id", "agent_id", "title", "prompt", "depends_on", "group_id"}):
+            raise ProtocolError("each task has invalid fields")
         tid, aid, title, prompt, deps = (task[k] for k in ("task_id", "agent_id", "title", "prompt", "depends_on"))
         if not isinstance(tid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", tid) or tid in ids:
             raise ProtocolError("task_id must be unique and valid")
@@ -175,8 +196,14 @@ def validate_plan(raw_plan: str | Mapping[str, object], registered_agent_ids: Se
             raise ProtocolError("task prompt is invalid")
         if not isinstance(deps, list) or any(not isinstance(dep, str) for dep in deps) or len(set(deps)) != len(deps):
             raise ProtocolError("depends_on must be a unique array of task ids")
+        gid = task.get("group_id", member_groups.get(aid))
+        if gid is not None and (not isinstance(gid, str) or gid not in group_members or aid not in group_members[gid]):
+            raise ProtocolError("task group does not contain its agent")
         ids.add(tid)
-        clean_tasks.append({"task_id": tid, "agent_id": aid, "title": title, "prompt": prompt, "depends_on": list(deps)})
+        clean = {"task_id": tid, "agent_id": aid, "title": title, "prompt": prompt, "depends_on": list(deps)}
+        if gid is not None:
+            clean["group_id"] = gid
+        clean_tasks.append(clean)
     by_id = {task["task_id"]: task for task in clean_tasks}
     for task in clean_tasks:
         if task["task_id"] in task["depends_on"] or any(dep not in by_id for dep in task["depends_on"]):
@@ -195,6 +222,7 @@ def validate_plan(raw_plan: str | Mapping[str, object], registered_agent_ids: Se
     for tid in by_id:
         visit(tid)
     return {"summary": summary, "tasks": clean_tasks, "questions": list(questions), "create_agents": clean_agents,
+            "groups": clean_groups,
             "dispatch_policy": dispatch_policy, "dispatch_ready": dispatch_policy == "auto"}
 
 

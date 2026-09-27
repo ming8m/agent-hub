@@ -25,10 +25,11 @@ from pathlib import Path
 from typing import Callable, Mapping
 import hub_protocol
 import hub_agent_io
+import hub_collaboration
 
 SCHEMA_VERSION = 1
 RELATIONS = {"orchestrator_worker", "worker_worker", "user_agent", "system"}
-EVENT_KINDS = {"status", "message", "dispatch", "deadline", "response", "summary", "rejected"}
+EVENT_KINDS = {"status", "message", "dispatch", "deadline", "response", "summary", "rejected", "dispute", "review"}
 ID_RE = re.compile(r"^[0-9a-f]{32}$")
 AGENT_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -211,6 +212,8 @@ class AgentHub:
         self._public_agent_loader = agent_config_loader or self._load_bus_agent_config
         self._executor = executor or self._run_bus_agent
         self._futures = {}
+        self._call_slots = {}
+        self._call_slots_lock = threading.Lock()
         self._summary_futures = {}
         self._task_summary_futures = {}
         self._config_path = self.root / "config.json"
@@ -319,6 +322,14 @@ class AgentHub:
                 except HubError:
                     continue
                 healthy_run_ids.add(run_id)
+                if any(d.get("status") == "reviewing" for d in run.get("disputes", [])):
+                    for dispute in run["disputes"]:
+                        if dispute.get("status") == "reviewing":
+                            dispute.update(status="needs_human", updated_at=_iso(),
+                                error={"category": "interrupted", "message": "Hub restarted during review; no automatic retry"})
+                            self._event_locked(run_id, "review", dispute_id=dispute["dispute_id"],
+                                state="needs_human", error_category="interrupted")
+                    self._review_changed_locked(run)
                 if run.get("summary", {}).get("status") == "pending":
                     run["summary"].update(status="failed", content=None,
                         error={"category": "interrupted", "message": "Hub restarted during summary generation"})
@@ -622,7 +633,8 @@ class AgentHub:
         agent_id = config.get("orchestrator_agent_id")
         valid = bool(agent_id and agent_id in agents)
         summary_id = config.get("summary_agent_id")
-        return {**config, "orchestrator_state": ("disabled" if not config.get("orchestrator_enabled")
+        return {**config, "collaboration_supported": True,
+                "orchestrator_state": ("disabled" if not config.get("orchestrator_enabled")
                 else "enabled" if valid else "invalid"), "orchestrator_valid": valid,
                 "summary_agent_state": "unavailable" if not summary_id else "enabled" if summary_id in agents else "invalid"}
 
@@ -682,6 +694,29 @@ class AgentHub:
                 "provider": provider, "model": template["model"], "timeout": 600,
                 "max_tokens": template.get("max_tokens", 4096), "template_id": template_id}
         return agents
+
+    def _execute_metered(self, run_id, agents, agent_id, prompt, timeout, run_snapshot=None):
+        """Apply a run's bounded call/context budget and concurrency gate."""
+        run = run_snapshot or self._read_json(self._record_path(self.runs_dir, run_id))
+        collaboration = run.get("collaboration")
+        if not collaboration:
+            return self._executor(agents, agent_id, prompt, timeout)
+        limits = collaboration["limits"]
+        if len(prompt.encode("utf-8", "strict")) > limits["max_context_bytes"]:
+            raise HubError("task_limit", "Model input exceeds this run's context byte limit")
+        with self._call_slots_lock:
+            slot = self._call_slots.setdefault(run_id,
+                threading.BoundedSemaphore(limits["max_concurrent_tasks"]))
+        # Waiting for capacity never holds the persistent storage lock.
+        with slot:
+            with self._locked():
+                current = self._read_json(self._record_path(self.runs_dir, run_id))
+                current_collaboration = current["collaboration"]
+                if current_collaboration["calls_used"] >= limits["max_calls"]:
+                    raise HubError("task_limit", "Model call limit reached")
+                current_collaboration["calls_used"] += 1
+                self._atomic_json(self._record_path(self.runs_dir, run_id), current)
+            return self._executor(agents, agent_id, prompt, timeout)
 
     @staticmethod
     def _redact_output(text, agents):
@@ -833,7 +868,7 @@ class AgentHub:
         return task
 
     def create_run(self, prompt, target_agent_ids=None, deadline_seconds=None, initiated_by="user", idempotency_key=None,
-                   mode="direct", dispatch_policy="preview"):
+                   mode="direct", dispatch_policy="preview", collaboration=None):
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 100_000:
             raise HubError("invalid_request", "prompt must contain 1 to 100000 characters")
         if mode not in {"direct", "orchestrated"}:
@@ -850,10 +885,21 @@ class AgentHub:
         if mode == "orchestrated" and dispatch_policy not in {"auto", "preview"}:
             raise HubError("invalid_request", "dispatch_policy must be auto or preview")
         agents = self._agents()
+        if collaboration is not None and mode != "orchestrated":
+            raise HubError("invalid_request", "Collaboration requires orchestrated mode")
         unknown = [a for a in target_agent_ids or [] if a not in agents]
         allowed_agent_ids = list(agents) if mode == "orchestrated" else [a for a in target_agent_ids if a in agents]
         safe_prompt = self._redact_output(prompt.strip(), agents)
         config = self._read_json(self._config_path)
+        if collaboration is not None:
+            try:
+                hub_collaboration.validate_collaboration(collaboration, agents, max_tasks=config["max_tasks"])
+                safe_collaboration = hub_collaboration.validate_collaboration(
+                    self._redact_data(collaboration, agents), agents, max_tasks=config["max_tasks"])
+            except hub_protocol.ProtocolError as exc:
+                raise HubError("invalid_request", str(exc)) from exc
+        else:
+            safe_collaboration = None
         if mode == "direct" and len(target_agent_ids) > config["max_tasks"]:
             raise HubError("task_limit", "Target count exceeds the configured task limit")
         orchestrator_id = None
@@ -870,15 +916,37 @@ class AgentHub:
                 for row in registry.get("templates", []) if row.get("id") in approved_template_ids}
             try:
                 plan_agents = {agent_id: agents[agent_id] for agent_id in allowed_agent_ids}
-                plan_prompt = hub_protocol.build_plan_prompt(safe_prompt, plan_agents, max_tasks=config["max_tasks"],
-                    approved_templates=[{"id": key, **value} for key, value in templates.items()],
-                    max_agents=config.get("max_agents", 16))
+                if safe_collaboration:
+                    remaining_tasks = config["max_tasks"] - len(safe_collaboration["representative_agent_ids"]) - 1
+                    if remaining_tasks < 1:
+                        raise HubError("task_limit", "Task limit cannot fit representatives, planner and worker")
+                    plan_prompt = hub_collaboration.build_collaboration_plan_prompt(safe_prompt, plan_agents, [],
+                        safe_collaboration["limits"], [{"id": key, **value} for key, value in templates.items()],
+                        max_tasks=remaining_tasks, max_agents=config.get("max_agents", 16))
+                else:
+                    plan_prompt = hub_protocol.build_plan_prompt(safe_prompt, plan_agents, max_tasks=config["max_tasks"],
+                        approved_templates=[{"id": key, **value} for key, value in templates.items()],
+                        max_agents=config.get("max_agents", 16))
             except hub_protocol.ProtocolError as exc:
                 raise HubError("invalid_request", str(exc)) from exc
         else:
             plan_prompt = None
             approved_template_ids = []
             templates = {}
+        rep_prompts = []
+        if safe_collaboration and safe_collaboration["representative_agent_ids"]:
+            rep_ids = safe_collaboration["representative_agent_ids"]
+            if config["max_tasks"] - len(rep_ids) - 1 < 1:
+                raise HubError("task_limit", "Task limit cannot fit representatives, planner and worker")
+            focuses = (["architecture_and_implementation", "verification"] if len(rep_ids) == 2 else
+                       ["architecture", "implementation", "verification"])
+            try:
+                for rep_id, focus in zip(rep_ids, focuses):
+                    rep_prompts.append(hub_collaboration.build_representative_prompt(
+                        safe_collaboration["source"], rep_id, safe_prompt,
+                        max_context_bytes=safe_collaboration["limits"]["max_context_bytes"], focus=focus))
+            except hub_protocol.ProtocolError as exc:
+                raise HubError("invalid_request", str(exc)) from exc
         if deadline_seconds is None:
             deadline_seconds = config.get("deadline_seconds")
         if deadline_seconds is not None and (type(deadline_seconds) not in (int, float) or not 1 <= deadline_seconds <= 86400):
@@ -901,6 +969,21 @@ class AgentHub:
                "summary": {"status": "idle" if summary_agent_id else "unavailable", "content": None,
                    "reason": None if summary_agent_id else "No summary agent configured"},
                "error": None, "completed_at": None, "idempotency_key": None}
+        if safe_collaboration:
+            source = safe_collaboration["source"]
+            metadata = None if source is None else {"version": source["version"],
+                "snapshot_digest": source["snapshot_digest"], "files": [
+                    {"path": f["path"], "size_bytes": len(f["text"].encode("utf-8")),
+                     "sha256": hashlib.sha256(f["text"].encode("utf-8")).hexdigest()} for f in source["files"]]}
+            run["_collaboration_source"] = source
+            run["collaboration"] = {"source": metadata,
+                "representative_agent_ids": safe_collaboration["representative_agent_ids"],
+                "arbiter_agent_id": safe_collaboration["arbiter_agent_id"],
+                "limits": safe_collaboration["limits"], "calls_used": 0,
+                "representative_task_ids": []}
+            run["groups"] = []
+            run["disputes"] = []
+            run["review_state"] = "clear"
         if idempotency_key is not None:
             if not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key) <= 200:
                 raise HubError("invalid_request", "Invalid idempotency key")
@@ -916,8 +999,20 @@ class AgentHub:
             self._event_locked(run_id, "status", state=run["status"], mode=mode,
                                orchestrator_agent_id=orchestrator_id, dispatch_policy=run["dispatch_policy"])
             if mode == "orchestrated":
+                if safe_collaboration and safe_collaboration["representative_agent_ids"]:
+                    for index, (rep_id, rep_prompt) in enumerate(zip(
+                            safe_collaboration["representative_agent_ids"], rep_prompts), 1):
+                        rep = self._create_task_locked(run_id, rep_id, rep_prompt, role="representative",
+                            sequence=-index, execution_timeout=agents[rep_id].get("timeout", 600))
+                        run["task_ids"].append(rep["task_id"])
+                        run["collaboration"]["representative_task_ids"].append(rep["task_id"])
+                        accepted.append({"task_id": rep["task_id"], "agent_id": rep_id,
+                            "role": "representative", "status": "queued"})
                 task = self._create_task_locked(run_id, orchestrator_id, plan_prompt, role="orchestrator", sequence=0,
                     execution_timeout=agents[orchestrator_id].get("timeout", 600))
+                if safe_collaboration and run["collaboration"]["representative_task_ids"]:
+                    task["depends_on_task_ids"] = list(run["collaboration"]["representative_task_ids"])
+                    self._atomic_json(self._record_path(self.tasks_dir, task["task_id"]), task)
                 run["plan_task_id"] = task["task_id"]
                 run["task_ids"].append(task["task_id"])
                 accepted.append({"task_id": task["task_id"], "agent_id": orchestrator_id, "role": "orchestrator", "status": "queued"})
@@ -950,8 +1045,10 @@ class AgentHub:
         stored = run.get("plan", {})
         try:
             validated = hub_protocol.validate_plan({"summary": stored["summary"], "tasks": stored["tasks"],
-                "questions": stored.get("questions", []), "create_agents": stored.get("create_agents", [])}, agents,
-                max_tasks=run["max_tasks"], dispatch_policy=run["dispatch_policy"],
+                "questions": stored.get("questions", []), "create_agents": stored.get("create_agents", []),
+                "groups": stored.get("groups", [])}, agents,
+                max_tasks=run["max_tasks"] - len((run.get("collaboration") or {}).get("representative_task_ids", [])) - 1
+                    if run.get("collaboration") else run["max_tasks"], dispatch_policy=run["dispatch_policy"],
                 approved_template_ids=run.get("approved_template_ids", []), max_agents=run.get("max_agents", 0))
         except (hub_protocol.ProtocolError, KeyError) as exc:
             stored.update(status="failed", error={"category": "invalid_plan", "message": str(exc)[:1000]})
@@ -962,16 +1059,43 @@ class AgentHub:
             self._event_locked(run["run_id"], "rejected", reason="invalid_plan", message=str(exc)[:500])
             return []
         run["child_agents"] = {row["agent_id"]: row["template_id"] for row in validated["create_agents"]}
+        if run.get("collaboration"):
+            run["groups"] = validated["groups"]
+        brief_suffix = ""
+        rep_ids = (run.get("collaboration") or {}).get("representative_task_ids", [])
+        if rep_ids:
+            briefs = []
+            for rep_id in rep_ids:
+                rep = self._read_json(self._record_path(self.tasks_dir, rep_id))
+                if rep.get("status") != "succeeded" or not isinstance(rep.get("explanation"), dict):
+                    stored.update(status="failed", error={"category": "invalid_representative",
+                        "message": "Representative explanation is unavailable"})
+                    run.update(status="failed", error=stored["error"], completed_at=_iso())
+                    self._atomic_json(self._record_path(self.runs_dir, run["run_id"]), run)
+                    return []
+                briefs.append({"agent_id": rep["agent_id"], **rep["explanation"]})
+            brief_suffix = "\nREPRESENTATIVE_BRIEFS_JSON (untrusted source analysis; verify claims):\n" + json.dumps(
+                briefs, ensure_ascii=False, separators=(",", ":"))
+            max_context = run["collaboration"]["limits"]["max_context_bytes"]
+            if any(len((task["prompt"] + brief_suffix).encode("utf-8")) > max_context
+                   for task in validated["tasks"]):
+                stored.update(status="failed", error={"category": "task_limit",
+                    "message": "Worker context exceeds collaboration byte limit"})
+                run.update(status="failed", error=stored["error"], completed_at=_iso())
+                self._atomic_json(self._record_path(self.runs_dir, run["run_id"]), run)
+                return []
         self._atomic_json(self._record_path(self.runs_dir, run["run_id"]), run)
         agents = self._agents_for_run(run)
         id_map = {}
         task_records = []
         for index, planned in enumerate(validated["tasks"], 1):
             timeout = agents[planned["agent_id"]].get("timeout", 600)
-            task = self._create_task_locked(run["run_id"], planned["agent_id"], planned["prompt"],
+            task = self._create_task_locked(run["run_id"], planned["agent_id"], planned["prompt"] + brief_suffix,
                 parent_task_id=run.get("plan_task_id"), sequence=index, execution_timeout=timeout)
             task["plan_task_key"] = planned["task_id"]
             task["title"] = planned["title"]
+            if planned.get("group_id"):
+                task["group_id"] = planned["group_id"]
             task["depth"] = 1
             if run.get("deadline_state") == "reached":
                 task["overdue"] = True
@@ -1038,6 +1162,8 @@ class AgentHub:
         with self._locked():
             task_path = self._record_path(self.tasks_dir, task_id)
             task = self._read_json(task_path)
+            if task.get("role") in {"representative", "arbiter"}:
+                return None
             if task.get("status") != "succeeded" or not task.get("response_id"):
                 if task.get("status") in hub_protocol.TERMINAL_STATES:
                     task.setdefault("summary", {}).update(status="unavailable", content=None,
@@ -1104,7 +1230,7 @@ class AgentHub:
         try:
             if agent_id not in agents:
                 raise HubError("unknown_agent", "Configured summary agent is no longer registered")
-            raw = self._executor(agents, agent_id, request["prompt"], agents[agent_id].get("timeout", 600))
+            raw = self._execute_metered(run_id, agents, agent_id, request["prompt"], agents[agent_id].get("timeout", 600))
             if not isinstance(raw, str):
                 raise HubError("invalid_summary", "Summary agent must return text")
             parsed = hub_protocol.parse_task_summary_response(raw, task_id=task_id)
@@ -1137,6 +1263,11 @@ class AgentHub:
             path = self._record_path(self.runs_dir, run_id)
             run = self._read_json(path)
             if run.get("summary_policy", "manual") != "auto":
+                return None
+            if run.get("review_state") in {"unresolved", "needs_human"}:
+                run["summary"] = {"status": "blocked_review", "content": None,
+                    "reason": "Unresolved disputes require review or a human decision"}
+                self._atomic_json(path, run)
                 return None
             agent_id = run.get("summary_agent_id")
             if not agent_id:
@@ -1209,7 +1340,9 @@ class AgentHub:
     def _plan_finished(self, task, output, agents):
         run = self.get_run(task["run_id"])
         try:
-            return hub_protocol.validate_plan(output, agents, max_tasks=run["max_tasks"],
+            rep_count = len((run.get("collaboration") or {}).get("representative_task_ids", []))
+            plan_limit = run["max_tasks"] - rep_count - 1 if run.get("collaboration") else run["max_tasks"]
+            return hub_protocol.validate_plan(output, agents, max_tasks=plan_limit,
                 dispatch_policy=run["dispatch_policy"], approved_template_ids=run.get("approved_template_ids", []),
                 max_agents=run.get("max_agents", 0)), None
         except hub_protocol.ProtocolError as exc:
@@ -1231,9 +1364,40 @@ class AgentHub:
                     "message": "A required task did not succeed"})
                 self._atomic_json(path, task)
                 self._event_locked(task["run_id"], "status", task_id=task_id, state="failed", error_category="dependency_failed")
+                if task.get("role") == "orchestrator":
+                    failed_run = self._read_json(self._record_path(self.runs_dir, task["run_id"]))
+                    failed_run["plan"].update(status="failed", error=task["error"])
+                    self._atomic_json(self._record_path(self.runs_dir, task["run_id"]), failed_run)
                 self._refresh_run_locked(task["run_id"])
                 return False
             run = self._read_json(self._record_path(self.runs_dir, task["run_id"]))
+            if task.get("role") == "orchestrator" and run.get("collaboration"):
+                rep_ids = run["collaboration"]["representative_task_ids"]
+                if rep_ids:
+                    briefs = []
+                    for rep_id in rep_ids:
+                        rep = self._read_json(self._record_path(self.tasks_dir, rep_id))
+                        if rep["status"] != "succeeded" or not isinstance(rep.get("explanation"), dict):
+                            raise HubError("conflict", "Representative explanation is unavailable")
+                        briefs.append({"agent_id": rep["agent_id"], **rep["explanation"]})
+                    try:
+                        task["prompt"] = hub_collaboration.build_collaboration_plan_prompt(
+                            run["prompt"], self._agents_for_run(run), briefs,
+                            run["collaboration"]["limits"],
+                            [{"id": key, **value} for key, value in run.get("approved_templates", {}).items()],
+                            max_tasks=run["max_tasks"] - len(rep_ids) - 1,
+                            max_agents=run.get("max_agents", 0))
+                    except hub_protocol.ProtocolError as exc:
+                        task.update(status="failed", completed_at=_iso(),
+                            error={"category": "invalid_representative_context", "message": str(exc)[:500]})
+                        self._atomic_json(path, task)
+                        run["plan"].update(status="failed", error=task["error"])
+                        self._atomic_json(self._record_path(self.runs_dir, run["run_id"]), run)
+                        self._event_locked(run["run_id"], "rejected", task_id=task_id,
+                            reason="invalid_representative_context")
+                        self._refresh_run_locked(run["run_id"])
+                        return False
+                    self._atomic_json(path, task)
             agents = self._agents_for_run(run)
             if task["agent_id"] not in agents:
                 task.update(status="failed", completed_at=_iso(), error={"category": "unknown_agent", "message": "Agent is no longer registered"})
@@ -1272,7 +1436,8 @@ class AgentHub:
             role = task.get("role", "worker")
             is_message_worker = role in {"worker", "orchestrator_reply"}
             executor_prompt = hub_agent_io.build_cli_prompt(task["prompt"]) if is_message_worker else task["prompt"]
-            output = self._executor(agents, task["agent_id"], executor_prompt, task["execution_timeout"])
+            output = self._execute_metered(task["run_id"], agents, task["agent_id"], executor_prompt,
+                task["execution_timeout"], run_snapshot=run_snapshot)
             if not isinstance(output, str):
                 raise TypeError("Agent output must be text")
             output = self._redact_output(output, agents)
@@ -1330,6 +1495,16 @@ class AgentHub:
                 protocol_errors.append("final_answer exceeds the Hub response limit")
             parsed_plan = None
             plan_error = None
+            explanation = None
+            if task.get("role") == "representative":
+                try:
+                    explanation = hub_collaboration.parse_representative_response(
+                        output, run_snapshot["_collaboration_source"])
+                    explanation = self._redact_data(explanation, agents)
+                    if not isinstance(explanation, dict):
+                        raise hub_protocol.ProtocolError("representative redaction failed")
+                except hub_protocol.ProtocolError as exc:
+                    plan_error = str(exc)[:1000]
             if task.get("role") == "orchestrator":
                 parsed_plan, plan_error = self._plan_finished(task, output, agents)
                 if parsed_plan is not None:
@@ -1351,7 +1526,10 @@ class AgentHub:
                 if protocol_errors:
                     task["protocol_errors"] = protocol_errors[:hub_agent_io.MAX_MESSAGES + 1]
                 if plan_error:
-                    task["error"] = {"category": "invalid_plan", "message": plan_error}
+                    task["error"] = {"category": "invalid_representative" if task.get("role") == "representative" else "invalid_plan",
+                        "message": plan_error}
+                if explanation is not None:
+                    task["explanation"] = explanation
                 self._atomic_json(self._record_path(self.tasks_dir, task_id), task)
                 response_event = self._event_locked(task["run_id"], "response", task_id=task_id, response_id=response_id,
                                    state=task["status"], to_agent_id=task["agent_id"])
@@ -1369,6 +1547,7 @@ class AgentHub:
                         run_record["plan"].update(status="ready", error=None, response_id=response_id,
                             summary=parsed_plan["summary"], questions=parsed_plan["questions"],
                             tasks=parsed_plan["tasks"], create_agents=parsed_plan.get("create_agents", []),
+                            groups=parsed_plan.get("groups", []),
                             response_event_id=response_event["event_id"])
                         self._atomic_json(self._record_path(self.runs_dir, task["run_id"]), run_record)
                         if run_record["dispatch_policy"] == "auto":
@@ -1484,7 +1663,17 @@ class AgentHub:
     def get_run(self, run_id):
         run = self._read_json(self._record_path(self.runs_dir, run_id))
         tasks = [self.get_task(tid) for tid in run["task_ids"]]
-        return {**run, "tasks": tasks, "counts": {state: sum(t["status"] == state for t in tasks)
+        if run.get("collaboration"):
+            tasks = [{**task, "prompt": "[uploaded source snapshot]"} if task.get("role") == "representative"
+                     else task for task in tasks]
+        public = {key: value for key, value in run.items() if not key.startswith("_")}
+        if public.get("collaboration"):
+            public["collaboration"] = {**public["collaboration"], "representatives": [
+                {"task_id": task["task_id"], "agent_id": task["agent_id"], "status": task["status"],
+                 "response_id": task.get("response_id"), "explanation": task.get("explanation"),
+                 "error": task.get("error")}
+                for task in tasks if task.get("role") == "representative"]}
+        return {**public, "tasks": tasks, "counts": {state: sum(t["status"] == state for t in tasks)
                 for state in ("queued", "running", "succeeded", "failed", "execution_timeout", "cancelled", "interrupted")}}
 
     def get_task(self, task_id):
@@ -1704,6 +1893,218 @@ class AgentHub:
             self._submit(child["task_id"])
         return {"event": event, "task": self.get_task(child["task_id"]) if child else None}
 
+    @staticmethod
+    def _review_state(run):
+        disputes = run.get("disputes", [])
+        if not disputes:
+            return "clear"
+        if any(row["status"] == "needs_human" for row in disputes):
+            return "needs_human"
+        if any(row["status"] != "resolved" for row in disputes):
+            return "unresolved"
+        return "resolved"
+
+    def _review_changed_locked(self, run):
+        run["review_state"] = self._review_state(run)
+        if run["review_state"] in {"unresolved", "needs_human"}:
+            run["summary"].update(status="blocked_review", content=None,
+                reason="Unresolved disputes require review or a human decision")
+        elif run.get("summary", {}).get("status") == "blocked_review":
+            run["summary"].update(status="stale", content=None, reason=None)
+        self._atomic_json(self._record_path(self.runs_dir, run["run_id"]), run)
+
+    def list_disputes(self, run_id):
+        run = self._read_json(self._record_path(self.runs_dir, run_id))
+        return run.get("disputes", [])
+
+    def create_dispute(self, run_id, payload):
+        if not isinstance(payload, dict) or set(payload) != {
+                "left_task_id", "right_task_id", "arbiter_agent_id", "claim", "evidence"}:
+            raise HubError("invalid_request", "Dispute fields are invalid")
+        left_id, right_id, arbiter_id = (payload[key] for key in
+            ("left_task_id", "right_task_id", "arbiter_agent_id"))
+        if (not all(isinstance(value, str) and ID_RE.fullmatch(value) for value in (left_id, right_id))
+                or left_id == right_id or not isinstance(arbiter_id, str) or not AGENT_RE.fullmatch(arbiter_id)):
+            raise HubError("invalid_request", "Dispute task or arbiter ID is invalid")
+        with self._locked():
+            run = self._read_json(self._record_path(self.runs_dir, run_id))
+            if run.get("mode") != "orchestrated" or not run.get("collaboration"):
+                raise HubError("invalid_request", "Disputes require an orchestrated collaboration run")
+            if left_id not in run["task_ids"] or right_id not in run["task_ids"]:
+                raise HubError("not_found", "Dispute tasks are not in this run")
+            left = self._read_json(self._record_path(self.tasks_dir, left_id))
+            right = self._read_json(self._record_path(self.tasks_dir, right_id))
+            if any(t.get("role") != "worker" or t.get("status") != "succeeded" or not t.get("response_id")
+                   for t in (left, right)) or left["agent_id"] == right["agent_id"]:
+                raise HubError("invalid_request", "Dispute requires two completed distinct worker agents")
+            if arbiter_id in {left["agent_id"], right["agent_id"]}:
+                raise HubError("invalid_request", "Dispute participants cannot arbitrate themselves")
+            agents = self._agents_for_run(run)
+            if arbiter_id not in agents:
+                raise HubError("unknown_agent", "Arbiter is not registered for this run")
+            configured = run["collaboration"].get("arbiter_agent_id")
+            same_group = left.get("group_id") and left.get("group_id") == right.get("group_id")
+            group_leader = next((g["leader_agent_id"] for g in run.get("groups", [])
+                if same_group and g["group_id"] == left["group_id"]), None)
+            if arbiter_id not in {configured, group_leader, run.get("orchestrator_agent_id")}:
+                raise HubError("invalid_request", "Arbiter is not a configured independent agent or superior")
+            if any({d["left_task_id"], d["right_task_id"]} == {left_id, right_id}
+                   for d in run.get("disputes", [])):
+                raise HubError("conflict", "A dispute already exists for these task results")
+            claim = self._redact_output(payload["claim"], agents) if isinstance(payload["claim"], str) else None
+            if not claim or not claim.strip() or len(claim) > 4000:
+                raise HubError("invalid_request", "Dispute claim is invalid")
+            source = run.get("_collaboration_source")
+            try:
+                evidence = hub_collaboration.validate_evidence(
+                    self._redact_data(payload["evidence"], agents), source)
+            except hub_protocol.ProtocolError as exc:
+                raise HubError("invalid_request", str(exc)) from exc
+            dispute = {"dispute_id": _id(), "run_id": run_id, "status": "open",
+                "left_task_id": left_id, "right_task_id": right_id,
+                "left_response_id": left["response_id"], "right_response_id": right["response_id"],
+                "arbiter_agent_id": arbiter_id, "claim": claim, "evidence": evidence,
+                "rounds": [], "selected_response_id": None, "resolution": None,
+                "created_at": _iso(), "updated_at": _iso()}
+            run.setdefault("disputes", []).append(dispute)
+            self._review_changed_locked(run)
+            self._event_locked(run_id, "dispute", state="open", dispute_id=dispute["dispute_id"],
+                task_ids=[left_id, right_id], response_ids=[left["response_id"], right["response_id"]])
+            return dispute
+
+    def _dispute_locked(self, run, dispute_id):
+        if not isinstance(dispute_id, str) or not ID_RE.fullmatch(dispute_id):
+            raise HubError("invalid_request", "Dispute ID is invalid")
+        dispute = next((row for row in run.get("disputes", []) if row["dispute_id"] == dispute_id), None)
+        if dispute is None:
+            raise HubError("not_found", "Dispute not found")
+        return dispute
+
+    def review_dispute(self, run_id, dispute_id):
+        with self._locked():
+            run = self._read_json(self._record_path(self.runs_dir, run_id))
+            dispute = self._dispute_locked(run, dispute_id)
+            if dispute["status"] != "open" or len(dispute["rounds"]) >= 2:
+                raise HubError("conflict", "Dispute is not ready for another review")
+            dispute.update(status="reviewing", updated_at=_iso())
+            self._review_changed_locked(run)
+            self._event_locked(run_id, "review", state="reviewing", dispute_id=dispute_id)
+        try:
+            self._pool.submit(self._run_dispute_review, run_id, dispute_id)
+        except RuntimeError:
+            with self._locked():
+                run = self._read_json(self._record_path(self.runs_dir, run_id))
+                dispute = self._dispute_locked(run, dispute_id)
+                dispute.update(status="needs_human", error={"category": "dispatch_interrupted"}, updated_at=_iso())
+                self._review_changed_locked(run)
+        return self._dispute_locked(self._read_json(self._record_path(self.runs_dir, run_id)), dispute_id)
+
+    def _run_dispute_review(self, run_id, dispute_id):
+        agents = {}
+        try:
+            with self._locked():
+                run = self._read_json(self._record_path(self.runs_dir, run_id))
+                dispute = dict(self._dispute_locked(run, dispute_id))
+                source = run.get("_collaboration_source")
+                agents = self._agents_for_run(run)
+                left = self.get_response(dispute["left_response_id"], run_id, dispute["left_task_id"])
+                right = self.get_response(dispute["right_response_id"], run_id, dispute["right_task_id"])
+            prompt = hub_collaboration.build_dispute_prompt(dispute, source, left, right)
+            raw = self._execute_metered(run_id, agents, dispute["arbiter_agent_id"], prompt,
+                agents[dispute["arbiter_agent_id"]].get("timeout", 600))
+            verdict = hub_collaboration.parse_dispute_verdict(raw)
+            verdict = self._redact_data(verdict, agents)
+            verdict = hub_collaboration.parse_dispute_verdict(verdict)
+            if not isinstance(verdict, dict) or any(ref not in
+                    {dispute["left_response_id"], dispute["right_response_id"]}
+                    for ref in verdict["evidence_refs"]):
+                raise hub_protocol.ProtocolError("Verdict cites an unrelated response")
+        except Exception as exc:
+            with self._locked():
+                run = self._read_json(self._record_path(self.runs_dir, run_id))
+                current = self._dispute_locked(run, dispute_id)
+                if current["status"] == "reviewing":
+                    current.update(status="needs_human", updated_at=_iso(),
+                        error={"category": "review_error",
+                            "message": self._redact_output(str(exc), agents)[:500]})
+                    self._review_changed_locked(run)
+                    self._event_locked(run_id, "review", state="needs_human", dispute_id=dispute_id,
+                        error_category="review_error")
+            return
+        with self._locked():
+            run = self._read_json(self._record_path(self.runs_dir, run_id))
+            current = self._dispute_locked(run, dispute_id)
+            if current["status"] != "reviewing":
+                return
+            round_record = {"round": len(current["rounds"]) + 1, "verdict": verdict,
+                "arbiter_agent_id": current["arbiter_agent_id"], "created_at": _iso()}
+            current["rounds"].append(round_record)
+            status = verdict["verdict"]
+            if status == "needs_evidence" and len(current["rounds"]) >= 2:
+                status = "needs_human"
+            current.update(status=status, updated_at=_iso())
+            if status == "resolved":
+                current["selected_response_id"] = verdict["selected_response_id"]
+                current["resolution"] = {"source": "arbiter", "selected_response_id": verdict["selected_response_id"],
+                    "rationale": verdict["rationale"], "decided_at": _iso()}
+            self._review_changed_locked(run)
+            self._event_locked(run_id, "review", state=status, dispute_id=dispute_id,
+                round=round_record["round"], selected_response_id=current.get("selected_response_id"))
+        if status == "resolved":
+            self._after_task_change(run_id)
+
+    def add_dispute_evidence(self, run_id, dispute_id, payload):
+        if not isinstance(payload, dict) or set(payload) != {"evidence"}:
+            raise HubError("invalid_request", "Evidence body is invalid")
+        with self._locked():
+            run = self._read_json(self._record_path(self.runs_dir, run_id))
+            dispute = self._dispute_locked(run, dispute_id)
+            if dispute["status"] != "needs_evidence" or len(dispute["rounds"]) >= 2:
+                raise HubError("conflict", "Dispute does not accept another evidence round")
+            agents = self._agents_for_run(run)
+            try:
+                evidence = hub_collaboration.validate_evidence(
+                    self._redact_data(payload["evidence"], agents), run.get("_collaboration_source"))
+            except hub_protocol.ProtocolError as exc:
+                raise HubError("invalid_request", str(exc)) from exc
+            if not evidence or any(item in dispute["evidence"] for item in evidence):
+                raise HubError("invalid_request", "Provide new evidence for another review")
+            try:
+                hub_collaboration.validate_evidence(dispute["evidence"] + evidence,
+                    run.get("_collaboration_source"))
+            except hub_protocol.ProtocolError as exc:
+                raise HubError("invalid_request", str(exc)) from exc
+            dispute["evidence"].extend(evidence)
+            dispute.update(status="open", updated_at=_iso())
+            self._review_changed_locked(run)
+            self._event_locked(run_id, "dispute", state="evidence_added", dispute_id=dispute_id)
+            return dispute
+
+    def decide_dispute(self, run_id, dispute_id, payload):
+        if not isinstance(payload, dict) or set(payload) != {"selected_response_id", "rationale"}:
+            raise HubError("invalid_request", "Human decision body is invalid")
+        with self._locked():
+            run = self._read_json(self._record_path(self.runs_dir, run_id))
+            dispute = self._dispute_locked(run, dispute_id)
+            if dispute["status"] not in {"needs_human", "needs_evidence", "open"}:
+                raise HubError("conflict", "Dispute is not awaiting a human decision")
+            selected = payload["selected_response_id"]
+            if not isinstance(selected, str) or selected not in {
+                    dispute["left_response_id"], dispute["right_response_id"]}:
+                raise HubError("invalid_request", "Decision must select one original response")
+            agents = self._agents_for_run(run)
+            rationale = self._redact_output(payload["rationale"], agents) if isinstance(payload["rationale"], str) else None
+            if not rationale or not rationale.strip() or len(rationale) > 4000:
+                raise HubError("invalid_request", "Human rationale is invalid")
+            dispute.update(status="resolved", selected_response_id=selected, updated_at=_iso(),
+                resolution={"source": "human", "selected_response_id": selected,
+                    "rationale": rationale, "decided_at": _iso()})
+            self._review_changed_locked(run)
+            self._event_locked(run_id, "review", state="resolved", dispute_id=dispute_id,
+                selected_response_id=selected, source="human")
+        self._after_task_change(run_id)
+        return dispute
+
     def _run_revision_locked(self, run_id):
         revision = 0
         for event in self._indexed_events_locked(run_id):
@@ -1717,17 +2118,27 @@ class AgentHub:
         """Generate a bounded protocol summary from terminal worker results."""
         if type(partial) is not bool:
             raise HubError("invalid_request", "partial must be a boolean")
+        agents = {}
         with self._locked():
             run = self._read_json(self._record_path(self.runs_dir, run_id))
+            if run.get("review_state") in {"unresolved", "needs_human"}:
+                run["summary"] = {"status": "blocked_review", "content": None,
+                    "reason": "Unresolved disputes require review or a human decision"}
+                self._atomic_json(self._record_path(self.runs_dir, run_id), run)
+                return run["summary"]
             tasks = [self._read_json(self._record_path(self.tasks_dir, tid)) for tid in run["task_ids"]]
             workers = [task for task in tasks if task.get("role") == "worker"]
             terminal = set(hub_protocol.TERMINAL_STATES)
-            included = [task for task in workers if task["status"] in terminal]
+            all_terminal = [task for task in workers if task["status"] in terminal]
+            losing_response_ids = {d["left_response_id"] if d["selected_response_id"] == d["right_response_id"]
+                                   else d["right_response_id"] for d in run.get("disputes", [])
+                                   if d.get("status") == "resolved" and d.get("selected_response_id")}
+            included = [task for task in all_terminal if task.get("response_id") not in losing_response_ids]
             if not run.get("summary_agent_id") and adapter is None:
                 return {"status": "unavailable", "content": None, "reason": "No summary agent configured"}
             if not workers or not included:
                 return {"status": "unavailable", "content": None, "reason": "No completed worker results to summarize"}
-            if not partial and len(included) != len(workers):
+            if not partial and len(all_terminal) != len(workers):
                 raise HubError("conflict", "A complete summary requires every worker task to finish")
             revision = self._run_revision_locked(run_id)
             if expected_revision is not None and expected_revision != revision:
@@ -1767,7 +2178,17 @@ class AgentHub:
                 if summary_agent_id not in agents:
                     raise HubError("unknown_agent", "Configured summary agent is no longer registered")
                 request = hub_protocol.build_summary_prompt(prompt, results, messages, partial=partial)
-                raw = self._executor(agents, summary_agent_id, request["prompt"], agents[summary_agent_id].get("timeout", 600))
+                resolutions = [{"selected_response_id": d["selected_response_id"],
+                    "left_response_id": d["left_response_id"], "right_response_id": d["right_response_id"],
+                    "rationale": d["resolution"]["rationale"]} for d in run.get("disputes", [])
+                    if d.get("status") == "resolved" and d.get("resolution")]
+                if resolutions:
+                    request["prompt"] += ("\nTRUSTED_REVIEW_RECORDS_JSON (the selected response is adopted; "
+                        "the other response is excluded from results):\n" +
+                        json.dumps(resolutions, ensure_ascii=False, separators=(",", ":")))
+                    if len(request["prompt"].encode("utf-8")) > hub_protocol.DEFAULT_SUMMARY_INPUT_BYTES:
+                        raise hub_protocol.ProtocolError("reviewed summary context exceeds byte limit")
+                raw = self._execute_metered(run_id, agents, summary_agent_id, request["prompt"], agents[summary_agent_id].get("timeout", 600))
                 parsed = hub_protocol.parse_summary_response(raw, task_ids=source_ids, partial=partial)
                 content = parsed["content"]
             if not isinstance(content, str):
@@ -1777,17 +2198,21 @@ class AgentHub:
         except Exception as exc:
             with self._locked():
                 current = self._read_json(self._record_path(self.runs_dir, run_id))
+                if current.get("review_state") in {"unresolved", "needs_human"}:
+                    return current.get("summary", {"status": "blocked_review", "content": None})
                 if current.get("summary", {}).get("generation_id") != generation_id:
                     return current.get("summary", {"status": "stale", "content": None})
                 changed = self._run_revision_locked(run_id) != revision
                 status = "stale" if changed else "failed"
                 current["summary"].update(status=status, content=None, generated_at=_iso(),
-                    error={"category": "summary_error", "message": str(exc)[:500]})
+                    error={"category": "summary_error", "message": self._redact_output(str(exc), agents)[:500]})
                 self._atomic_json(self._record_path(self.runs_dir, run_id), current)
                 self._event_locked(run_id, "summary", state=status, task_ids=source_ids)
                 return current["summary"]
         with self._locked():
             current = self._read_json(self._record_path(self.runs_dir, run_id))
+            if current.get("review_state") in {"unresolved", "needs_human"}:
+                return current.get("summary", {"status": "blocked_review", "content": None})
             if current.get("summary", {}).get("generation_id") != generation_id:
                 return current.get("summary", {"status": "stale", "content": None})
             changed = self._run_revision_locked(run_id) != revision

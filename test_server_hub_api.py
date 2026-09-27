@@ -323,6 +323,55 @@ class HubApiTests(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual("manual", current["config"]["summary_policy"])
 
+    def test_collaboration_dispute_http_contract(self):
+        self.store.put_config({"orchestrator_agent_id": "alpha", "orchestrator_enabled": True,
+                               "summary_policy": "manual"})
+        status, config = self.request("GET", "/api/config/hub")
+        self.assertEqual(200, status)
+        self.assertTrue(config["config"]["collaboration_supported"])
+        plan = {"summary": "Compare", "tasks": [
+            {"task_id": "a", "agent_id": "beta", "title": "A", "prompt": "Work A", "depends_on": []},
+            {"task_id": "b", "agent_id": "gamma", "title": "B", "prompt": "Work B", "depends_on": []}]}
+        def executor(agents, agent_id, prompt, timeout):
+            if "Agent Hub planning component" in prompt:
+                return json.dumps(plan)
+            if "DISPUTE_JSON:\n" in prompt:
+                data = json.loads(prompt.split("DISPUTE_JSON:\n", 1)[1])
+                return json.dumps({"verdict": "resolved", "rationale": "A wins",
+                    "evidence_refs": [data["left_response_id"]],
+                    "selected_response_id": data["left_response_id"]})
+            if "SOURCE_JSON:\n" in prompt:
+                return json.dumps({"summary": "task result"})
+            return "worker result"
+        self.store._executor = executor
+        status, accepted = self.request("POST", "/api/runs", {"mode": "orchestrated",
+            "prompt": "Compare results", "dispatch_policy": "auto",
+            "collaboration": {"arbiter_agent_id": "alpha",
+                "limits": {"max_concurrent_tasks": 2, "max_context_bytes": 65536, "max_calls": 8}}})
+        self.assertEqual(202, status)
+        run_id = accepted["run_id"]
+        run = self.wait_for_run(run_id, lambda row: row["status"] == "completed")
+        workers = [task for task in run["tasks"] if task["role"] == "worker"]
+        status, created = self.request("POST", f"/api/runs/{run_id}/disputes", {
+            "left_task_id": workers[0]["task_id"], "right_task_id": workers[1]["task_id"],
+            "arbiter_agent_id": "alpha", "claim": "Conflicting conclusions",
+            "evidence": [{"note": "Compare the original responses"}]})
+        self.assertEqual(201, status)
+        dispute_id = created["dispute"]["dispute_id"]
+        status, listed = self.request("GET", f"/api/runs/{run_id}/disputes")
+        self.assertEqual(200, status)
+        self.assertEqual([dispute_id], [row["dispute_id"] for row in listed["disputes"]])
+        status, review = self.request("POST", f"/api/runs/{run_id}/disputes/{dispute_id}/review", {})
+        self.assertEqual(202, status)
+        self.assertIn(review["dispute"]["status"], {"reviewing", "resolved"})
+        self.wait_for_run(run_id, lambda row: row["review_state"] == "resolved")
+        status, result = self.request("GET", f"/api/runs/{run_id}")
+        self.assertEqual(200, status)
+        self.assertEqual(result["run"]["disputes"][0]["selected_response_id"], workers[0]["response_id"])
+        status, rejected = self.request("POST", f"/api/runs/{run_id}/disputes/{dispute_id}/review", {})
+        self.assertEqual(409, status)
+        self.assertEqual("conflict", rejected["error"])
+
     def test_provider_registry_secret_redaction_and_run_scoped_child_message_e2e(self):
         upstream = ThreadingHTTPServer(("127.0.0.1", 0), _FakeProviderHandler)
         upstream.daemon_threads = True

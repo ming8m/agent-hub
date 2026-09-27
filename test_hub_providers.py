@@ -49,6 +49,29 @@ def _serve(response_payload=None, redirect_to=None):
 
 
 class ProviderAdapterTests(unittest.TestCase):
+    def test_output_limit_finish_reasons_and_blank_content_fail_closed(self):
+        truncated = (
+            ("openai-chat-completions", {"choices": [{"finish_reason": "length",
+                "message": {"content": "partial"}}]}),
+            ("anthropic-messages", {"stop_reason": "max_tokens",
+                "content": [{"type": "text", "text": "partial"}]}),
+            ("ollama-chat", {"done_reason": "length", "message": {"content": "partial"}}),
+        )
+        for protocol, response in truncated:
+            with self.subTest(protocol=protocol), self.assertRaisesRegex(
+                    hub_providers.ProviderError, "maximum output tokens"):
+                hub_providers._content(protocol, response)
+        for protocol, response in (
+            ("openai-chat-completions", {"choices": [{"message": {"content": "  "}}]}),
+            ("anthropic-messages", {"content": [{"type": "thinking", "thinking": "private"}]}),
+            ("ollama-chat", {"message": {"content": "\n"}}),
+        ):
+            with self.subTest(protocol=protocol), self.assertRaisesRegex(
+                    hub_providers.ProviderError, "empty content"):
+                hub_providers._content(protocol, response)
+        self.assertEqual("ok", hub_providers._content("openai-chat-completions",
+            {"choices": [{"message": {"content": "ok"}}]}))
+
     def test_slow_trickle_respects_total_timeout(self):
         class SlowHandler(BaseHTTPRequestHandler):
             def do_POST(self):
