@@ -179,7 +179,7 @@ test('run detail tabs expose distinct panels and preserve a chosen tab until run
   assert.deepEqual(panels.map(panel => panel.hidden), [true, false, true]);
   assert.match(app, /if \(state\.runTabRunId !== run\.run_id\) \{[\s\S]*?setRunTab\(defaultRunTab\(run\)\)/);
   assert.match(app, /const planningTasks = tasks\.filter\(task => task\.role === 'orchestrator'\)/);
-  assert.ok(app.includes("const outputTasks = tasks.filter(task => !['orchestrator', 'representative', 'arbiter'].includes(task.role))"));
+  assert.ok(app.includes("const outputTasks = tasks.filter(task => !['orchestrator', 'representative', 'arbiter', 'discussion_compare', 'discussion_final'].includes(task.role))"));
 });
 
 test('run rendering and keyboard navigation keep approval and replies in their intended panels', () => {
@@ -373,7 +373,7 @@ test('representative picker keeps at most three distinct agents', () => {
   };
   const state = { selectedRepresentatives: new Set() };
   let rendered = 0;
-  const context = { state, $, setAdvancedMode() {}, setRepresentativeMode() {}, renderCollabFileList() {}, refreshDisputeArbiters() {}, submitDispute() {},
+  const context = { state, $, setAdvancedMode() {}, setRepresentativeMode() {}, renderCollabFileList() {}, renderDiscussionFileList() {}, refreshDisputeArbiters() {}, submitDispute() {},
     renderCollaborationSelectors() { rendered++; }, updateDispatchState() {}, toast() {} };
   vm.runInNewContext(`${app.slice(start, end)} globalThis.bindCollaborationEvents = bindCollaborationEvents;`, context);
   context.bindCollaborationEvents();
@@ -497,4 +497,157 @@ test('representative response events lead to the collaboration evidence panel', 
   jump.listeners.click();
   assert.equal(selected, 'collaboration');
   assert.equal(representativePanel.focused, true);
+});
+
+test('discussion payload enforces two or three independent analysts and fixed-call budget', async () => {
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(web, 'index.html'), 'utf8');
+  assert.match(html, /id="modeDiscussion"[^>]*data-mode="discussion"/);
+  const start = app.indexOf('  async function buildDiscussionPayload()');
+  const end = app.indexOf('  function shortId(id)', start);
+  assert.ok(start >= 0 && end > start);
+  const values = new Map([
+    ['#discussionMaxConcurrent', { value: '2' }], ['#discussionMaxContext', { value: '65536' }],
+    ['#discussionMaxCalls', { value: '8' }], ['#discussionFiles', { files: [] }],
+    ['#discussionVersion', { value: '' }], ['#discussionSource', { open: false }]
+  ]);
+  const state = { hub: { discussion_supported: true, orchestrator_state: 'enabled', orchestrator_agent_id: 'lead', max_tasks: 8 },
+    selectedDiscussion: new Set(['a', 'b']), agents: [{ id: 'lead' }, { id: 'a' }, { id: 'b' }, { id: 'c' }] };
+  const context = { state, $: selector => values.get(selector), TextDecoder };
+  vm.runInNewContext(`${app.slice(app.indexOf('  function boundedInteger(selector'), start)}${app.slice(start, end)} globalThis.buildDiscussionPayload = buildDiscussionPayload;`, context);
+  const payload = await context.buildDiscussionPayload();
+  assert.deepEqual([...payload.target_agent_ids], ['a', 'b']);
+  assert.equal(payload.collaboration.limits.max_calls, 8);
+  assert.equal(Object.hasOwn(payload.collaboration, 'source'), false);
+  assert.equal(Object.hasOwn(payload.collaboration, 'representative_agent_ids'), false);
+  state.selectedDiscussion.add('lead');
+  await assert.rejects(context.buildDiscussionPayload(), /主 Agent/);
+  state.selectedDiscussion.delete('lead');
+  state.selectedDiscussion.add('c');
+  values.get('#discussionMaxCalls').value = '7';
+  await assert.rejects(context.buildDiscussionPayload(), /8/);
+  values.get('#discussionMaxCalls').value = '8';
+  state.hub.max_tasks = 7;
+  await assert.rejects(context.buildDiscussionPayload(), /任务名额/);
+  state.hub.max_tasks = 8;
+  values.get('#discussionFiles').files = [{ name: 'main.py', size: 8, arrayBuffer: async () => Uint8Array.from(Buffer.from('print(1)')).buffer }];
+  values.get('#discussionVersion').value = 'snapshot-1';
+  const withSource = await context.buildDiscussionPayload();
+  assert.equal(withSource.collaboration.source.files[0].text, 'print(1)');
+  values.get('#discussionFiles').files = [{ name: 'bad.py', size: 2, arrayBuffer: async () => Uint8Array.from([0xff, 0xfe]).buffer }];
+  await assert.rejects(context.buildDiscussionPayload(), /encoded|valid|字符|encoding/i);
+});
+
+test('discussion agent selection excludes the main Agent and preserves direct selections', async () => {
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const start = app.indexOf('  async function onResponseClick(event)');
+  const end = app.indexOf('  function bindRunTabs()', start);
+  assert.ok(start >= 0 && end > start);
+  const state = { mode: 'discussion', hub: { orchestrator_agent_id: 'lead' },
+    agents: ['lead', 'a', 'b', 'c', 'd'].map(id => ({ id })),
+    selectedTargets: new Set(['d']), selectedDiscussion: new Set() };
+  let messages = 0;
+  const context = { state, $: () => ({ textContent: '' }), updateDispatchState() {}, toast() { messages++; } };
+  vm.runInNewContext(`${app.slice(start, end)} globalThis.onResponseClick = onResponseClick;`, context);
+  const choose = id => {
+    const button = { dataset: { agentId: id }, setAttribute() {}, classList: { toggle() {} } };
+    return context.onResponseClick({ target: { closest: () => button } });
+  };
+  await choose('lead');
+  for (const id of ['a', 'b', 'c', 'd']) await choose(id);
+  assert.deepEqual([...state.selectedDiscussion], ['a', 'b', 'c']);
+  assert.deepEqual([...state.selectedTargets], ['d']);
+  assert.equal(messages, 1);
+});
+
+test('discussion renders structured stages and retained decision evidence', () => {
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const start = app.indexOf('  function discussionTask(run, taskId)');
+  const end = app.indexOf('  function renderGroups(run)', start);
+  assert.ok(start >= 0 && end > start);
+  const node = () => ({ children: [], textContent: '', classList: { toggle(_name, hidden) { this.hidden = hidden; } },
+    append(child) { this.children.push(child); }, replaceChildren() { this.children = []; }, addEventListener() {} });
+  const nodes = new Map();
+  const $ = selector => { if (!nodes.has(selector)) nodes.set(selector, node()); return nodes.get(selector); };
+  const context = { $, document: { createElement: node }, agentName: id => id || '?', statusLabel: task => task.status,
+    showResponse() {}, addText(parent, _tag, _className, value) { const child = node(); child.textContent = value; parent.append(child); return child; } };
+  vm.runInNewContext(`${app.slice(start, end)} globalThis.renderDiscussion = renderDiscussion; globalThis.renderDiscussionResult = renderDiscussionResult;`, context);
+  const tasks = [
+    { task_id: 'a', agent_id: 'a', status: 'succeeded', response_id: 'ra', discussion_result: { summary: '观点 A', proposal: '先收窄接口', evidence: ['接口定义'], risks: [] } },
+    { task_id: 'b', agent_id: 'b', status: 'succeeded', response_id: 'rb', discussion_result: { summary: '观点 B' } },
+    { task_id: 'c', agent_id: 'lead', status: 'succeeded', response_id: 'rc' },
+    { task_id: 'r', agent_id: 'a', status: 'succeeded', response_id: 'rr', discussion_result: { summary: '互评完成', reviews: [{ conflict_id: 'k1', position: '支持 A', evidence: ['复核记录'] }] } },
+    { task_id: 'f', agent_id: 'lead', status: 'succeeded', response_id: 'rf' }
+  ];
+  const run = { mode: 'discussion', orchestrator_agent_id: 'lead', tasks, collaboration: { calls_used: 6, limits: { max_calls: 8, max_concurrent_tasks: 2, max_context_bytes: 65536 } },
+    discussion: { status: 'ready', analyst_agent_ids: ['a', 'b'], analysis_task_ids: ['a', 'b'], compare_task_id: 'c', review_task_ids: ['r'], final_task_id: 'f',
+      compare: { summary: '发现分歧', conflicts: [{ conflict_id: 'k1', description: '接口范围不同', response_ids: ['ra', 'rb'] }] },
+      final: { summary: '主 Agent 结论', decisions: [{ conflict_id: 'k1', status: 'resolved', resolution: '按证据采纳 A', adopted_response_ids: ['ra'], evidence_response_ids: ['rr'] }], unresolved: [] } } };
+  context.renderDiscussion(run); context.renderDiscussionResult(run);
+  assert.equal($('#discussionPanel').classList.hidden, false);
+  assert.equal($('#discussionStages').children.length, 4);
+  const contents = root => [root.textContent, ...root.children.flatMap(contents)].join(' ');
+  assert.match(contents($('#discussionStages')), /先收窄接口/);
+  assert.match(contents($('#discussionStages')), /接口范围不同/);
+  assert.match(contents($('#discussionStages')), /支持 A/);
+  assert.match(contents($('#discussionResult')), /按证据采纳 A/);
+  assert.match(contents($('#discussionResult')), /原回复保留/);
+  const noConflict = { ...run, discussion: { ...run.discussion, status: 'ready', review_task_ids: [],
+    compare: { summary: '观点一致', conflicts: [] },
+    final: { summary: '直接裁决', decisions: [], unresolved: [] } } };
+  context.renderDiscussion(noConflict); context.renderDiscussionResult(noConflict);
+  assert.match(contents($('#discussionStages')), /无分歧，已跳过互评/);
+  assert.match(contents($('#discussionResult')), /直接裁决/);
+  const interrupted = { ...run, summary: { status: 'partial', content: '分析任务被中断' },
+    discussion: { ...run.discussion, status: 'interrupted', compare_task_id: null, compare: null,
+      review_task_ids: [], final_task_id: null, final: null, unresolved: ['分析任务被中断'] } };
+  context.renderDiscussion(interrupted); context.renderDiscussionResult(interrupted);
+  assert.match(contents($('#discussionStages')), /研讨已停止，互评未进行/);
+  assert.match(contents($('#discussionResult')), /停止原因：分析任务被中断/);
+  assert.doesNotMatch(contents($('#discussionResult')), /尚未完成裁决/);
+});
+
+test('discussion task without structured result shows phase state, not a promised model summary', () => {
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const start = app.indexOf('  function renderTasks(tasks, list, run,');
+  const end = app.indexOf('  function agentName(id)', start);
+  assert.ok(start >= 0 && end > start);
+  const node = () => ({ children: [], classList: { toggle() {} }, setAttribute() {}, append(child) { this.children.push(child); }, replaceChildren() { this.children = []; } });
+  const list = node();
+  const context = { state: { currentRun: {} }, document: { createElement: node }, makeAvatar: node, agentName: id => id,
+    statusLabel: task => task.status, dateLabel: () => 'now', showResponse() {},
+    TaskStatus: { isTerminal: status => ['succeeded', 'failed', 'interrupted'].includes(status) },
+    addText(parent, _tag, _className, value) { const child = node(); child.textContent = value; parent.append(child); return child; } };
+  vm.runInNewContext(`${app.slice(start, end)} globalThis.renderTasks = renderTasks;`, context);
+  context.renderTasks([{ task_id: 'x', agent_id: 'a', role: 'discussion_analysis', status: 'failed', error: { message: '格式校验失败' } }], list, { mode: 'discussion' });
+  const contents = root => [root.textContent || '', ...root.children.flatMap(contents)].join(' ');
+  assert.match(contents(list), /阶段输出未生成/);
+  assert.match(contents(list), /格式校验失败/);
+  assert.doesNotMatch(contents(list), /摘要待生成|任务完成后会按配置生成/);
+});
+
+test('discussion summary explains skipped review and terminal stop accurately', () => {
+  const app = fs.readFileSync(path.join(web, 'app.js'), 'utf8');
+  const start = app.indexOf('  function renderRunSummary(run, workerTasks)');
+  const end = app.indexOf('  function renderEvents()', start);
+  assert.ok(start >= 0 && end > start);
+  const nodes = new Map(), $ = selector => {
+    if (!nodes.has(selector)) nodes.set(selector, { textContent: '', className: '', disabled: false });
+    return nodes.get(selector);
+  };
+  const context = { $, TaskStatus: { isTerminal: () => true } };
+  vm.runInNewContext(`${app.slice(start, end)} globalThis.renderRunSummary = renderRunSummary;`, context);
+  const run = { mode: 'discussion', tasks: [], summary: { status: 'ready', content: '直接裁决' },
+    discussion: { status: 'ready', final: { summary: '直接裁决' }, review_task_ids: [], unresolved: [] } };
+  context.renderRunSummary(run, []);
+  assert.match($('#summaryHelp').textContent, /无分歧时会跳过互评/);
+  run.discussion.review_task_ids = ['review'];
+  context.renderRunSummary(run, []);
+  assert.match($('#summaryHelp').textContent, /最多一轮定向互评/);
+  run.summary = { status: 'partial', content: '分析任务被中断' };
+  run.discussion = { status: 'interrupted', final: null, review_task_ids: [], unresolved: ['分析任务被中断'] };
+  context.renderRunSummary(run, []);
+  assert.equal($('#summaryState').textContent, '研讨已停止，未形成裁决');
+  assert.match($('#summaryHelp').textContent, /停止原因和未决项/);
+  assert.doesNotMatch($('#summaryHelp').textContent, /生成的裁决汇总/);
 });

@@ -26,6 +26,7 @@
     <div class="modebox" role="radiogroup" aria-label="本轮任务派发模式">
       <button class="mode-option active" role="radio" aria-checked="true" data-mode="direct" type="button"><span class="mode-symbol">◎</span><span><b>无主 Agent</b><small>由你选择并直接派发</small></span><span class="radio"></span></button>
       <button class="mode-option" id="modeOrchestrated" role="radio" aria-checked="false" data-mode="orchestrated" type="button"><span class="mode-symbol purple">✦</span><span><b>启用主 Agent</b><small>由主 Agent 规划并协调</small></span><span class="radio"></span></button>
+      <button class="mode-option" id="modeDiscussion" role="radio" aria-checked="false" aria-disabled="true" data-mode="discussion" type="button"><span class="mode-symbol">◇</span><span><b>共同研讨</b><small>独立分析、互评，由主 Agent 裁决</small></span><span class="radio"></span></button>
     </div>
     <small class="mode-explainer" id="modeExplainer">无主模式只向本轮选择的 Agent 派发任务。</small>
     <section class="lead-config" id="hubSettings" aria-labelledby="hubSettingsTitle">
@@ -85,6 +86,22 @@
           </div>
         </details>
         <p class="lead-note hidden" id="collabUnsupported">当前服务暂不支持协作扩展；普通主 Agent 计划仍可使用。</p>
+        <section class="discussion-setup hidden" id="discussionSetup" aria-label="共同研讨设置">
+          <p class="lead-note">2–3 位不同 Agent 独立分析，主 Agent 提取分歧；有分歧时最多定向互评一轮，再裁决汇总。主 Agent 不在分析者名单中。</p>
+          <div class="collab-form-grid">
+            <label class="form-field">并发模型调用上限<input id="discussionMaxConcurrent" type="number" min="1" max="8" value="2"></label>
+            <label class="form-field">全轮模型调用次数上限<input id="discussionMaxCalls" type="number" min="1" max="100" value="8"><small class="field-help">覆盖独立分析、提取分歧、互评和最终裁决；不保证恰好用满。</small></label>
+            <label class="form-field">上下文上限（字节）<input id="discussionMaxContext" type="number" min="1024" max="262144" value="65536"></label>
+          </div>
+          <details class="discussion-source" id="discussionSource"><summary>附上源码文本（可选）</summary>
+            <div class="collab-form-grid">
+              <label class="form-field wide">文本文件（最多 32 个，单个不超过 128 KiB，合计不超过 256 KiB）<input id="discussionFiles" type="file" multiple><small class="field-help">仅提交你选中的 UTF-8 文本，不会读取其他本机文件。</small></label>
+              <div class="wide collab-file-list" id="discussionFileList" aria-live="polite">尚未选择文件。</div>
+              <label class="form-field wide">源码版本标签<input id="discussionVersion" maxlength="128" placeholder="例如：提交号或未提交快照标签"></label>
+            </div>
+          </details>
+        </section>
+        <p class="lead-note hidden" id="discussionUnsupported">当前服务暂不支持共同研讨；可继续使用其他派发模式。</p>
         <div class="dispatch-footer"><span id="dispatchHint">请选择一个或多个 Agent。</span><button class="send" id="startRun" type="button" disabled>并行派发 <span>↑</span></button></div>
       </section>
       <section class="current-run hidden" id="currentRun">
@@ -99,6 +116,7 @@
         <section class="run-tab-panel" id="runPanelCollaboration" role="tabpanel" aria-labelledby="runTabCollaboration" tabindex="0" hidden>
           <p class="run-panel-intro" id="runCollaborationIntro">查看任务计划、执行动态和 Agent 间的交流。</p>
           <section class="collab-run-section hidden" id="representativePanel" aria-labelledby="representativeTitle" tabindex="-1"><div class="summary-head"><div><div class="eyebrow">SOURCE REVIEW</div><h3 id="representativeTitle">协作限额与代码代表</h3></div></div><p id="collabSourceMeta" class="summary-help"></p><p id="collabBudgetMeta" class="summary-help"></p><div id="representativeResults"></div></section>
+          <section class="collab-run-section hidden" id="discussionPanel" aria-labelledby="discussionTitle" tabindex="-1"><div class="summary-head"><div><div class="eyebrow">DISCUSSION</div><h3 id="discussionTitle">共同研讨</h3></div><span class="summary-state" id="discussionState">准备中</span></div><p class="summary-help" id="discussionBudget"></p><div id="discussionStages"></div></section>
           <section class="plan-panel hidden" id="planPanel" aria-labelledby="planTitle"><div class="summary-head"><div><div class="eyebrow">MASTER PLAN</div><h3 id="planTitle">主 Agent 计划</h3></div><span class="summary-state" id="planState">等待计划</span></div><p class="plan-agent" id="planAgent"></p><div class="plan-content" id="planContent"></div><div class="plan-questions" id="planQuestions"></div><div class="plan-tasks" id="planTasks"></div><button type="button" class="save-config approve-plan hidden" id="approvePlan">批准计划并派发</button></section>
           <section class="collab-run-section hidden" id="groupPanel" aria-labelledby="groupTitle"><div class="summary-head"><div><div class="eyebrow">GROUPS</div><h3 id="groupTitle">任务分组</h3></div></div><div id="groupList"></div></section>
           <details class="planning-record" id="planningRecord"><summary>规划原始记录</summary><div class="run-tasks planning-tasks" id="planningTasks" aria-label="主 Agent 规划任务"></div></details>
@@ -113,6 +131,7 @@
         <section class="run-tab-panel" id="runPanelResults" role="tabpanel" aria-labelledby="runTabResults" tabindex="0" hidden>
           <section class="summary-panel" aria-labelledby="summaryTitle"><div class="summary-head"><div><div class="eyebrow">MODEL SUMMARY</div><h3 id="summaryTitle">本轮汇总</h3></div><span class="summary-state" id="summaryState">模型摘要未就绪</span></div><div id="summaryContent" class="summary-content">本轮未配置可用的摘要 Agent。逐条任务回复和原始全文仍可查看。</div><button type="button" class="text-action" id="requestSummary">请求模型摘要</button><p class="summary-help" id="summaryHelp">摘要由模型生成；不会把 Agent 原始回复伪装为摘要。</p><p class="summary-help" id="summaryExceptions"></p></section>
           <section class="collab-run-section hidden" id="resultReviewPanel" aria-labelledby="resultReviewTitle"><div class="summary-head"><div><div class="eyebrow">REVIEW OUTCOME</div><h3 id="resultReviewTitle">采纳结论与未决项</h3></div></div><div id="resultReviewList"></div></section>
+          <section class="collab-run-section hidden" id="discussionResultPanel" aria-labelledby="discussionResultTitle" tabindex="-1"><div class="summary-head"><div><div class="eyebrow">DECISION</div><h3 id="discussionResultTitle">主 Agent 裁决</h3></div></div><div id="discussionResult"></div></section>
         </section>
       </section>
       <section class="session-runs hidden" id="sessionRuns"><div class="section-label">本次打开期间的任务</div><div id="runHistory"></div></section>

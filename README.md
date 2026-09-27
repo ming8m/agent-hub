@@ -56,7 +56,9 @@ The server opens the browser with a local URL whose `#token=` fragment bootstrap
 
 ## Agent Hub
 
-The browser UI is the Agent Hub. Use its provider settings to configure agents, provider templates, and approved child-agent templates. Use **Direct** mode to select workers for a parallel run or **Orchestrated** mode to use the configured orchestrator. The mode and worker selection on the run form apply to the current run.
+The browser UI is the Agent Hub. Use its provider settings to configure agents, provider templates, and approved child-agent templates. Use **Direct** mode to select workers for a parallel run, **Orchestrated** mode to use the configured orchestrator, or **共同研讨** for a bounded discussion with a lead Agent. The mode and worker selection on the run form apply to the current run.
+
+In **共同研讨**, first configure and enable a valid lead Agent, then select 2–3 other registered Agents (3–4 participants total). They analyze independently, the lead identifies disagreements, and the analysts perform at most one targeted review round when disagreements exist. The lead then makes a final decision. Set at least 6 model-call and task slots for two analysts, or 8 for three; the form defaults to 8 calls. Optional source text comes only from files explicitly selected in the browser. The three run tabs retain each participant's original response, the lead's decision, and any unresolved points. Additional review calls can cost time and money, so this mode is not guaranteed to finish faster.
 
 ### 接入自定义模型服务
 

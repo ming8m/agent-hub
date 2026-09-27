@@ -103,6 +103,22 @@ class HubApiTests(unittest.TestCase):
             time.sleep(0.01)
         self.fail(f"run condition did not become true: {self.store.get_run(run_id)}")
 
+    def test_discussion_route_defaults_to_auto_and_rejects_preview(self):
+        status, result = self.request("PUT", "/api/config/hub", {
+            "orchestrator_agent_id": "alpha", "orchestrator_enabled": True})
+        self.assertEqual(200, status)
+        self.assertTrue(result["config"]["discussion_supported"])
+        body = {"mode": "discussion", "prompt": "Consider options", "target_agent_ids": ["beta", "gamma"]}
+        status, rejected = self.request("POST", "/api/runs", {**body, "dispatch_policy": "preview"})
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_request", rejected["error"])
+        status, accepted = self.request("POST", "/api/runs", body)
+        self.assertEqual(202, status)
+        status, loaded = self.request("GET", f"/api/runs/{accepted['run_id']}")
+        self.assertEqual(200, status)
+        self.assertEqual("auto", loaded["run"]["dispatch_policy"])
+        self.assertEqual("alpha", loaded["run"]["discussion"]["moderator_agent_id"])
+
     @staticmethod
     def plan_text(agent_id="beta"):
         return json.dumps({"summary": "Delegate synthetic task", "tasks": [{

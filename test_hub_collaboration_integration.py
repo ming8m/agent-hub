@@ -226,8 +226,12 @@ class CollaborationIntegrationTests(unittest.TestCase):
         run_id = self.hub.create_run("Bound calls", mode="orchestrated", dispatch_policy="auto",
                                      collaboration=collaboration)["run_id"]
         self.wait_for(lambda: self.hub.get_run(run_id)["status"] == "completed")
-        self.wait_for(lambda: all(task.get("summary", {}).get("status") != "pending"
-            for task in self.hub.get_run(run_id)["tasks"]))
+        # "idle" is also not pending; wait for summaries to reach a terminal
+        # state before counting calls made by the next run.
+        self.wait_for(lambda: all(task.get("summary", {}).get("status") in {
+            "ready", "failed", "unavailable", "stale"}
+            for task in self.hub.get_run(run_id)["tasks"]
+            if task["status"] == "succeeded" and task["role"] not in {"representative", "arbiter"}))
         self.assertEqual(peak, 1)
         self.assertLessEqual(self.hub.get_run(run_id)["collaboration"]["calls_used"], 10)
 

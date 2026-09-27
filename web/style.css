@@ -3483,3 +3483,30 @@ h1 {
   .collab-form-grid .wide,
   .dispute-action-form .wide { grid-column: 1; }
 }
+
+.mode-option[aria-disabled="true"] { opacity: .58; }
+.discussion-setup {
+  margin: 0 0 18px;
+  padding: 15px 17px;
+  border: 1px solid #e6e2d9;
+  border-radius: 10px;
+  background: #f9f8f4;
+}
+.discussion-setup > .lead-note { margin: 0 0 13px; line-height: 1.6; }
+.discussion-source {
+  margin-top: 13px;
+  border-top: 1px solid #e9e5dc;
+  padding-top: 10px;
+}
+.discussion-source > summary { color: #5c584e; font-size: 14px; font-weight: 600; cursor: pointer; }
+.discussion-source > .collab-form-grid { margin-top: 13px; }
+.target-pick:disabled { cursor: default; opacity: .63; }
+.discussion-stage { margin: 14px 0 19px; }
+.discussion-stage h4 { margin: 0 0 7px; color: #48453d; font-size: 15px; font-weight: 650; }
+.discussion-stage > .collab-meta { margin: 0 0 8px; line-height: 1.55; }
+.discussion-stage > .collab-info-card { margin: 7px 0; }
+#discussionResult .collab-info-card .response-link { margin-right: 12px; }
+@media (max-width: 640px) {
+  .modebox { grid-template-columns: 1fr; }
+  .discussion-setup { padding: 13px; }
+}

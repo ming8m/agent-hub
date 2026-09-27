@@ -46,7 +46,7 @@
   const state = {
     agents: [], hub: null, selectedTargets: new Set(), mode: 'direct', currentRunId: null,
     currentRun: null, events: [], eventCursor: 0, relation: 'all', history: [], timer: null,
-    runTab: null, runTabRunId: null, selectedRepresentatives: new Set(), disputeSignature: null, disputeOptionsSignature: null,
+    runTab: null, runTabRunId: null, selectedRepresentatives: new Set(), selectedDiscussion: new Set(), disputeSignature: null, disputeOptionsSignature: null,
     dirtyConfig: false, loadingRun: false, agentSignature: null, hubSignature: null, hubLoaded: false,
     registry: { providers: [], provider_agents: [], templates: [], approved_template_ids: [] }, registryLoaded: false
   };
@@ -143,6 +143,7 @@
     const registeredIds = new Set(state.agents.map(agent => agent.id));
     state.selectedTargets = new Set([...state.selectedTargets].filter(id => registeredIds.has(id)));
     state.selectedRepresentatives = new Set([...state.selectedRepresentatives].filter(id => registeredIds.has(id)));
+    state.selectedDiscussion = new Set([...state.selectedDiscussion].filter(id => registeredIds.has(id)));
     const list = $('#agentList'), picks = $('#targetPicks');
     list.replaceChildren(); picks.replaceChildren();
     $('#agentCount').textContent = state.agents.length;
@@ -169,12 +170,17 @@
   function renderTargetPicks() {
     const picks = $('#targetPicks'); picks.replaceChildren();
     if (!state.agents.length) { addText(picks, 'span', 'muted', '请先在设置中创建或连接 Agent。'); return; }
+    const discussion = state.mode === 'discussion';
+    const selectedIds = discussion ? state.selectedDiscussion : state.selectedTargets;
+    const leadId = state.hub?.orchestrator_agent_id;
     for (const agent of state.agents) {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'target-pick';
-      button.dataset.agentId = agent.id; button.setAttribute('aria-pressed', String(state.selectedTargets.has(agent.id)));
-      button.classList.toggle('selected', state.selectedTargets.has(agent.id));
-      button.append(makeAvatar(agent.id, true)); addText(button, 'span', '', agent.name || agent.id);
-      addText(button, 'span', 'target-check', state.selectedTargets.has(agent.id) ? '✓' : '+'); picks.append(button);
+      const isLead = discussion && agent.id === leadId;
+      button.dataset.agentId = agent.id; button.disabled = isLead;
+      button.setAttribute('aria-pressed', String(selectedIds.has(agent.id)));
+      button.classList.toggle('selected', selectedIds.has(agent.id));
+      button.append(makeAvatar(agent.id, true)); addText(button, 'span', '', `${agent.name || agent.id}${isLead ? ' · 主 Agent' : ''}`);
+      addText(button, 'span', 'target-check', isLead ? '主' : selectedIds.has(agent.id) ? '✓' : '+'); picks.append(button);
     }
   }
   function renderCollaborationSelectors() {
@@ -197,6 +203,12 @@
   function renderCollabFileList() {
     const list = $('#collabFileList'); list.replaceChildren();
     const files = [...$('#collabFiles').files];
+    if (!files.length) { list.textContent = '尚未选择文件。'; return; }
+    for (const file of files) addText(list, 'span', 'collab-file', `${file.name} · ${file.size} B`);
+  }
+  function renderDiscussionFileList() {
+    const list = $('#discussionFileList'); list.replaceChildren();
+    const files = [...$('#discussionFiles').files];
     if (!files.length) { list.textContent = '尚未选择文件。'; return; }
     for (const file of files) addText(list, 'span', 'collab-file', `${file.name} · ${file.size} B`);
   }
@@ -238,6 +250,7 @@
       state.hubSignature = signature;
       renderCollaborationSelectors();
       if (!state.hubLoaded) { state.mode = config.mode_default === 'orchestrated' ? 'orchestrated' : 'direct'; state.hubLoaded = true; }
+      if (state.mode === 'discussion') renderTargetPicks();
       renderOrchestratorOptions();
       $('#orchestratorEnabled').checked = Boolean(config.orchestrator_enabled);
       $('#summaryPolicy').value = config.summary_policy || 'auto';
@@ -262,6 +275,7 @@
       : summaryState === 'invalid' ? '已配置的摘要 Agent 当前不可用，请重新选择并保存。'
         : '未配置模型摘要 Agent。逐项摘要和本轮汇总将不可用。';
     $('#modeOrchestrated').setAttribute('aria-disabled', String(!ready));
+    $('#modeDiscussion').setAttribute('aria-disabled', String(!ready || config.discussion_supported !== true));
     updateModePresentation();
   }
   const registryPath = '/api/config/agents';
@@ -506,32 +520,54 @@
   }
   function updateModePresentation() {
     const orchestrated = state.mode === 'orchestrated';
+    const discussion = state.mode === 'discussion';
     $$('.mode-option').forEach(button => {
       const selected = button.dataset.mode === state.mode;
       button.classList.toggle('active', selected); button.setAttribute('aria-checked', String(selected));
     });
     const ready = state.hub?.orchestrator_state === 'enabled';
-    $('#orchestratorNotice').classList.toggle('hidden', !orchestrated || ready);
+    $('#orchestratorNotice').classList.toggle('hidden', !(orchestrated || discussion) || ready);
     $('#orchestratorNotice span').textContent = '请在设置的协作设置中选择并启用有效的主 Agent，然后保存。';
-    $('#modeExplainer').textContent = orchestrated
+    $('#modeExplainer').textContent = discussion
+      ? '分析者先独立回答；有分歧时最多互评一轮，再由主 Agent 裁决。'
+      : orchestrated
       ? '主 Agent 可联系已注册 Agent，并仅从批准模板创建本轮子 Agent。'
       : `工作任务与相互派发仅限本轮选中的 Agent；摘要由${state.hub?.summary_agent_id ? `${agentName(state.hub.summary_agent_id)} 生成` : '配置的摘要 Agent 生成'}。`;
-    $('#modePill').textContent = orchestrated ? `启用主 Agent · ${ready ? agentName(state.hub.orchestrator_agent_id) : '尚未就绪'}` : '无主 Agent · 直接并行';
+    $('#modePill').textContent = discussion ? `共同研讨 · 主 Agent：${ready ? agentName(state.hub.orchestrator_agent_id) : '尚未就绪'}`
+      : orchestrated ? `启用主 Agent · ${ready ? agentName(state.hub.orchestrator_agent_id) : '尚未就绪'}` : '无主 Agent · 直接并行';
     $('#targetPicks').classList.toggle('targets-disabled', orchestrated);
-    $('#targetLabel').innerHTML = orchestrated ? '派发目标 <span>由主 Agent 计划选择</span>' : '接收 Agent <span>可多选，一次并行运行</span>';
+    $('#targetLabel').innerHTML = discussion ? '研讨分析者 <span>选择 2–3 位，不含主 Agent</span>'
+      : orchestrated ? '派发目标 <span>由主 Agent 计划选择</span>' : '接收 Agent <span>可多选，一次并行运行</span>';
     $('#orchestrationOptions').classList.toggle('hidden', !orchestrated);
     const collaborationSupported = state.hub?.collaboration_supported === true;
     $('#collaborationSetup').classList.toggle('hidden', !orchestrated || !collaborationSupported);
     $('#collabUnsupported').classList.toggle('hidden', !orchestrated || collaborationSupported);
+    $('#discussionSetup').classList.toggle('hidden', !discussion || state.hub?.discussion_supported !== true);
+    $('#discussionUnsupported').classList.toggle('hidden', !discussion || state.hub?.discussion_supported === true);
+    $('#modeDiscussion').title = state.hub?.discussion_supported === true ? '' : '当前服务暂不支持共同研讨';
     updateDispatchState();
   }
   function updateDispatchState() {
     const orchestrated = state.mode === 'orchestrated';
+    const discussion = state.mode === 'discussion';
     const hasTargets = state.selectedTargets.size > 0;
     const ready = state.hub?.orchestrator_state === 'enabled';
-    $('#startRun').disabled = (orchestrated ? !ready : !hasTargets) || !$('#prompt').value.trim();
-    $('#startRun').textContent = orchestrated ? '启动主 Agent 计划 ↑' : '并行派发 ↑';
-    $('#dispatchHint').textContent = orchestrated
+    const discussionCount = state.selectedDiscussion.size;
+    const requiredTasks = discussionCount * 2 + 2;
+    const discussionReady = ready && state.hub?.discussion_supported === true
+      && discussionCount >= 2 && discussionCount <= 3
+      && Number($('#discussionMaxCalls').value) >= requiredTasks
+      && Number(state.hub?.max_tasks ?? 0) >= requiredTasks;
+    $('#startRun').disabled = (discussion ? !discussionReady : orchestrated ? !ready : !hasTargets) || !$('#prompt').value.trim();
+    $('#startRun').textContent = discussion ? '启动共同研讨 ↑' : orchestrated ? '启动主 Agent 计划 ↑' : '并行派发 ↑';
+    $('#dispatchHint').textContent = discussion
+      ? !ready ? '请先启用有效的主 Agent。'
+        : state.hub?.discussion_supported !== true ? '当前服务暂不支持共同研讨。'
+          : discussionCount < 2 ? '请选择 2–3 位分析者；主 Agent 不计入。'
+            : Number(state.hub?.max_tasks ?? 0) < requiredTasks ? `当前任务上限不足；${discussionCount} 位分析者至少需要 ${requiredTasks} 个任务名额。`
+              : Number($('#discussionMaxCalls').value) < requiredTasks ? `请把模型调用次数上限设为至少 ${requiredTasks}。`
+                : `${discussionCount} 位分析者 + ${agentName(state.hub.orchestrator_agent_id)}；有分歧时最多互评一轮，主 Agent 最终裁决。`
+      : orchestrated
       ? ready ? ($('#enableAdvancedCollaboration').checked && $('#enableCollaboration').checked ? `先由 ${state.selectedRepresentatives.size} 位代码代表阅读选定文件，再由主 Agent 规划。` : $('#dispatchPolicy').value === 'auto' ? '主 Agent 生成并校验计划后将自动派发任务。' : '主 Agent 生成并校验计划后，会等待你预览和批准。') : '请先在侧栏启用有效的主 Agent。'
       : hasTargets ? `将并行启动 ${state.selectedTargets.size} 个已选 Agent。` : '请选择一个或多个 Agent。';
     const representativeCount = $('#enableAdvancedCollaboration').checked && $('#enableCollaboration').checked ? state.selectedRepresentatives.size : 0;
@@ -541,7 +577,11 @@
     $('#targetPicks').setAttribute('aria-disabled', String(orchestrated));
   }
   function setMode(mode) {
-    state.mode = mode === 'orchestrated' ? 'orchestrated' : 'direct';
+    if (mode === 'discussion' && state.hub?.discussion_supported !== true) {
+      toast('当前服务暂不支持共同研讨。'); return;
+    }
+    state.mode = ['direct', 'orchestrated', 'discussion'].includes(mode) ? mode : 'direct';
+    renderTargetPicks();
     updateModePresentation();
   }
   function formatDeadlineInput(defaultSeconds) {
@@ -596,6 +636,49 @@
     if (arbiter) collaboration.arbiter_agent_id = arbiter;
     return collaboration;
   }
+  async function buildDiscussionPayload() {
+    if (state.hub?.discussion_supported !== true || state.hub?.orchestrator_state !== 'enabled')
+      throw new Error('当前服务或主 Agent 尚未支持共同研讨。');
+    const ids = [...state.selectedDiscussion];
+    const leadId = state.hub.orchestrator_agent_id;
+    if (ids.length < 2 || ids.length > 3 || new Set(ids).size !== ids.length || ids.includes(leadId)
+      || ids.some(id => !state.agents.some(agent => agent.id === id)))
+      throw new Error('请选择 2–3 位不同的已注册分析者，且不能包含主 Agent。');
+    const needed = 2 * ids.length + 2;
+    if (Number(state.hub.max_tasks) < needed)
+      throw new Error(`${ids.length} 位分析者的固定流程至少需要 ${needed} 个任务名额；请在协作设置调高每轮任务数上限。`);
+    const limits = {
+      max_concurrent_tasks: boundedInteger('#discussionMaxConcurrent', '并发模型调用上限', 1, 8),
+      max_context_bytes: boundedInteger('#discussionMaxContext', '上下文上限', 1024, 262144),
+      max_calls: boundedInteger('#discussionMaxCalls', '全轮模型调用次数上限', needed, 100)
+    };
+    const collaboration = { limits };
+    const files = [...$('#discussionFiles').files];
+    const version = $('#discussionVersion').value.trim();
+    if (!files.length && version) throw new Error('未选择源码文件时，请清空版本标签。');
+    if (files.length) {
+      if (files.length > 32) throw new Error('最多选择 32 个文本源码文件。');
+      if (!version || version.length > 128) throw new Error('附上源码时，请填写不超过 128 字的版本标签。');
+      const seen = new Set(), sourceFiles = [];
+      let totalBytes = 0;
+      for (const file of files) {
+        const path = file.name, folded = path.toLocaleLowerCase();
+        if (!path || path === '.' || path === '..' || /[/\\]/.test(path) || seen.has(folded))
+          throw new Error('源码文件名必须唯一，且不能包含路径分隔符。');
+        if (file.size > 131072) throw new Error(`${path} 超过单文件 128 KiB 上限。`);
+        seen.add(folded); totalBytes += file.size;
+        if (totalBytes > 262144) throw new Error('所选源码文件合计不得超过 256 KiB。');
+        const fileText = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+        if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(fileText))
+          throw new Error(`${path} 不是可用的文本文件。`);
+        sourceFiles.push({ path, text: fileText });
+      }
+      if (!sourceFiles.some(file => file.text.length)) throw new Error('请选择至少一个有内容的源码文件。');
+      if (totalBytes > limits.max_context_bytes) throw new Error('源码总字节数超过当前上下文上限。');
+      collaboration.source = { version, files: sourceFiles };
+    }
+    return { target_agent_ids: ids, collaboration };
+  }
   function shortId(id) { return id ? id.slice(0, 8) : ''; }
   function countStatus(tasks, statuses) { return tasks.filter(task => statuses.includes(task.status)).length; }
   function statusLabel(task) { return TaskStatus.label(task); }
@@ -616,10 +699,10 @@
   }
   function defaultRunTab(run) {
     if (['completed', 'failed'].includes(run.status) && ['unresolved', 'needs_human'].includes(run.review_state)) return 'results';
-    if (['completed', 'failed'].includes(run.status) && ['ready', 'partial'].includes(run.summary?.status) && run.summary?.content) return 'results';
+    if (['completed', 'failed', 'interrupted'].includes(run.status) && ['ready', 'partial'].includes(run.summary?.status) && run.summary?.content) return 'results';
     if (run.status === 'failed' && run.mode === 'orchestrated' && run.plan?.status === 'failed') return 'collaboration';
     if (run.status === 'completed') return 'outputs';
-    return run.mode === 'orchestrated' ? 'collaboration' : 'outputs';
+    return ['orchestrated', 'discussion'].includes(run.mode) ? 'collaboration' : 'outputs';
   }
   function renderRun(run) {
     state.currentRun = run;
@@ -631,7 +714,9 @@
     }
     $('#runShortId').textContent = shortId(run.run_id);
     $('#runPrompt').textContent = run.prompt || '(无任务描述)';
-    $('#runModeLabel').textContent = run.mode === 'orchestrated'
+    $('#runModeLabel').textContent = run.mode === 'discussion'
+      ? `共同研讨 · 主 Agent：${agentName(run.orchestrator_agent_id)}`
+      : run.mode === 'orchestrated'
       ? `主 Agent：${agentName(run.orchestrator_agent_id)} · ${run.dispatch_policy === 'auto' ? '自动派发' : '计划审批'}`
       : '无主 Agent · 并行';
     $('#runCreatedAt').textContent = `创建于 ${dateLabel(run.created_at)}`;
@@ -645,26 +730,34 @@
     } else { deadline.textContent = '未设置截止时间'; deadline.classList.remove('overdue'); }
     const tasks = Array.isArray(run.tasks) ? run.tasks : [];
     const planningTasks = tasks.filter(task => task.role === 'orchestrator');
-    const outputTasks = tasks.filter(task => !['orchestrator', 'representative', 'arbiter'].includes(task.role));
+    const outputTasks = tasks.filter(task => !['orchestrator', 'representative', 'arbiter', 'discussion_compare', 'discussion_final'].includes(task.role));
     const workerTasks = outputTasks.filter(task => task.role === 'worker');
     const done = tasks.filter(task => TaskStatus.isTerminal(task.status)).length;
     const succeeded = countStatus(outputTasks, ['succeeded']);
     $('#runCountLabel').textContent = `${done} / ${tasks.length} 已结束 · ${succeeded} 条成功回复`;
     $('#runProgressBar').style.width = `${tasks.length ? Math.round(done / tasks.length * 100) : 0}%`;
-    $('#collaborationCount').textContent = run.plan?.status === 'awaiting_approval' ? '待批准' : planningTasks.length ? String(planningTasks.length) : '';
+    $('#collaborationCount').textContent = run.mode === 'discussion'
+      ? ({ ready: '已裁决', needs_attention: '待处理', failed: '失败' })[run.discussion?.status] || '研讨中'
+      : run.plan?.status === 'awaiting_approval' ? '待批准' : planningTasks.length ? String(planningTasks.length) : '';
     $('#outputsCount').textContent = outputTasks.length ? String(outputTasks.length) : '';
     const summaryBadges = { ready: '已生成', partial: '部分', stale: '待更新', failed: '失败' };
     const summaryReady = ['ready', 'partial'].includes(run.summary?.status);
     $('#resultsCount').textContent = ['unresolved', 'needs_human'].includes(run.review_state) ? '待裁决' : summaryBadges[run.summary?.status] || '';
     $('#runTabResults').classList.toggle('has-update', summaryReady && state.runTab !== 'results');
     $('#runTabCollaboration').classList.toggle('needs-action', run.plan?.status === 'awaiting_approval' && state.runTab !== 'collaboration');
-    $('#runCollaborationIntro').textContent = run.mode === 'orchestrated'
+    $('#runCollaborationIntro').textContent = run.mode === 'discussion'
+      ? '查看独立观点、分歧及最多一轮定向互评；主 Agent 最终裁决。'
+      : run.mode === 'orchestrated'
       ? '查看任务计划、执行动态和 Agent 间的交流。'
       : '无主模式没有主 Agent 计划；这里显示任务动态和 Agent 间的交流。';
     $('#planningRecord').hidden = run.mode !== 'orchestrated';
+    $('#summaryTitle').textContent = run.mode === 'discussion' ? '主 Agent 汇总' : '本轮汇总';
+    $('#requestSummary').classList.toggle('hidden', run.mode === 'discussion');
     renderTasks(outputTasks, $('#runTasks'), run);
     renderTasks(planningTasks, $('#planningTasks'), run, { planning: true });
-    renderRepresentatives(run); renderPlan(run); renderGroups(run); renderDisputes(run); renderRunSummary(run, workerTasks); renderReviewResults(run);
+    renderRepresentatives(run); renderDiscussion(run); renderPlan(run); renderGroups(run); renderDisputes(run);
+    renderRunSummary(run, run.mode === 'discussion' ? outputTasks : workerTasks);
+    renderReviewResults(run); renderDiscussionResult(run);
     const late = run.deadline_state === 'reached' && done < tasks.length;
     $('#deadlineAlert').classList.toggle('hidden', !late);
     if (late) $('#deadlineAlert').textContent = `已到截止时间，${tasks.length - done} 个任务仍在执行。截止只触发提醒；迟到回复会继续归入本轮任务。当前已有 ${succeeded}/${outputTasks.length} 条成功回复。`;
@@ -703,8 +796,8 @@
     const representatives = Array.isArray(collaboration.representatives) ? collaboration.representatives : [];
     const selected = Array.isArray(collaboration.representative_agent_ids) ? collaboration.representative_agent_ids : [];
     const panel = $('#representativePanel'), list = $('#representativeResults'); list.replaceChildren();
-    panel.classList.toggle('hidden', !run.collaboration);
-    if (!run.collaboration) return;
+    panel.classList.toggle('hidden', !run.collaboration || run.mode === 'discussion');
+    if (!run.collaboration || run.mode === 'discussion') return;
     const source = collaboration.source || {};
     const files = Array.isArray(source.files) ? source.files : [];
     $('#collabSourceMeta').textContent = files.length
@@ -736,6 +829,125 @@
       }
       list.append(card);
     }
+  }
+  function discussionTask(run, taskId) {
+    return (run.tasks || []).find(task => task.task_id === taskId);
+  }
+  function addDiscussionTaskLink(card, task) {
+    if (!task?.response_id) return;
+    const button = addText(card, 'button', 'response-link', '展开原始全文');
+    button.type = 'button';
+    button.addEventListener('click', () => showResponse(task));
+  }
+  function renderDiscussion(run) {
+    const panel = $('#discussionPanel'), list = $('#discussionStages');
+    panel.classList.toggle('hidden', run.mode !== 'discussion');
+    if (run.mode !== 'discussion') return;
+    const discussion = run.discussion || {};
+    const labels = { analyzing: '独立分析中', comparing: '提取分歧中', reviewing: '定向互评中',
+      finalizing: '主 Agent 裁决中', ready: '已裁决', needs_attention: '存在未决项',
+      failed: '研讨失败', interrupted: '已中断' };
+    $('#discussionState').textContent = labels[discussion.status] || '准备中';
+    $('#discussionState').className = `summary-state ${discussion.status || 'pending'}`;
+    const limits = run.collaboration?.limits || {};
+    $('#discussionBudget').textContent = `主 Agent：${agentName(run.orchestrator_agent_id)} · 分析者 ${(discussion.analyst_agent_ids || []).map(agentName).join('、') || '尚未建立'} · 模型调用 ${run.collaboration?.calls_used ?? 0}/${limits.max_calls ?? '—'} · 并发上限 ${limits.max_concurrent_tasks ?? '—'} · 上下文上限 ${limits.max_context_bytes ?? '—'} 字节。有分歧时最多互评一轮。`;
+    list.replaceChildren();
+    if (['needs_attention', 'failed', 'interrupted'].includes(discussion.status)) {
+      const reasons = discussion.unresolved?.length ? discussion.unresolved
+        : !discussion.final && run.summary?.content ? [run.summary.content] : [];
+      for (const reason of reasons) addText(list, 'p', 'collab-unresolved', `${discussion.final ? '未决' : '停止原因'}：${reason}`);
+    }
+    const heading = (title, help) => {
+      const block = document.createElement('section'); block.className = 'discussion-stage';
+      addText(block, 'h4', '', title);
+      if (help) addText(block, 'p', 'collab-meta', help);
+      list.append(block); return block;
+    };
+    const analysisBlock = heading('1 · 独立分析', '每位分析者先独立回答，原文可在“Agent 输出”展开。');
+    for (const id of discussion.analysis_task_ids || []) {
+      const task = discussionTask(run, id), result = task?.discussion_result || {};
+      const card = document.createElement('article'); card.className = 'collab-info-card';
+      addText(card, 'b', '', `${agentName(task?.agent_id)} · ${task ? statusLabel(task) : '等待开始'}`);
+      if (result.summary) addText(card, 'p', '', result.summary);
+      if (result.proposal) addText(card, 'p', 'collab-finding', `观点：${result.proposal}`);
+      for (const note of result.evidence || []) addText(card, 'p', 'collab-meta', `依据：${note}`);
+      for (const risk of result.risks || []) addText(card, 'p', 'collab-meta', `风险：${risk}`);
+      if (task?.error?.message) addText(card, 'p', 'task-error', task.error.message);
+      addDiscussionTaskLink(card, task); analysisBlock.append(card);
+    }
+    if (!(discussion.analysis_task_ids || []).length) addText(analysisBlock, 'p', 'muted', '等待分析任务建立。');
+    const compareTask = discussionTask(run, discussion.compare_task_id);
+    const compare = discussion.compare || compareTask?.discussion_result || {};
+    const compareBlock = heading('2 · 主 Agent 提取分歧', compareTask ? `状态：${statusLabel(compareTask)}` : '等待独立分析完成。');
+    if (compare.summary) addText(compareBlock, 'p', '', compare.summary);
+    for (const conflict of compare.conflicts || []) {
+      const card = document.createElement('article'); card.className = 'collab-info-card';
+      addText(card, 'b', '', `分歧 ${conflict.conflict_id || '未编号'}`);
+      addText(card, 'p', '', conflict.description || '等待分歧说明。');
+      const agents = (conflict.response_ids || []).map(id => discussionTask(run, (run.tasks || []).find(task => task.response_id === id)?.task_id)?.agent_id).filter(Boolean);
+      if (agents.length) addText(card, 'small', 'collab-meta', `涉及：${agents.map(agentName).join('、')}`);
+      compareBlock.append(card);
+    }
+    if (compareTask?.error?.message) addText(compareBlock, 'p', 'task-error', compareTask.error.message);
+    addDiscussionTaskLink(compareBlock, compareTask);
+    const reviewBlock = heading('3 · 定向互评（最多一轮）', '只围绕已识别的分歧，保留每位分析者的原始回复。');
+    for (const id of discussion.review_task_ids || []) {
+      const task = discussionTask(run, id), result = task?.discussion_result || {};
+      const card = document.createElement('article'); card.className = 'collab-info-card';
+      addText(card, 'b', '', `${agentName(task?.agent_id)} · ${task ? statusLabel(task) : '等待开始'}`);
+      if (result.summary) addText(card, 'p', '', result.summary);
+      for (const review of result.reviews || []) {
+        addText(card, 'p', 'collab-finding', `${review.conflict_id || '分歧'}：${review.position || '待复核'}`);
+        for (const note of review.evidence || []) addText(card, 'p', 'collab-meta', `依据：${note}`);
+      }
+      if (task?.error?.message) addText(card, 'p', 'task-error', task.error.message);
+      addDiscussionTaskLink(card, task); reviewBlock.append(card);
+    }
+    const noConflict = compareTask?.status === 'succeeded' && Array.isArray(compare.conflicts) && compare.conflicts.length === 0;
+    if (!(discussion.review_task_ids || []).length) addText(reviewBlock, 'p', 'muted',
+      noConflict ? '无分歧，已跳过互评。'
+        : ['needs_attention', 'failed', 'interrupted'].includes(discussion.status) ? '研讨已停止，互评未进行。'
+          : '等待分歧提取；有分歧时才进行互评。');
+    const finalTask = discussionTask(run, discussion.final_task_id);
+    const finalBlock = heading('4 · 主 Agent 裁决', finalTask ? `状态：${statusLabel(finalTask)}`
+      : noConflict ? '无分歧，跳过互评后直接裁决。'
+        : ['needs_attention', 'failed', 'interrupted'].includes(discussion.status) ? '研讨已停止，未进入裁决阶段。'
+          : '等待分歧核对或互评完成。');
+    addText(finalBlock, 'p', 'collab-meta', '裁决依据、采纳结论与未决项显示在“最终结果”。');
+    if (finalTask?.error?.message) addText(finalBlock, 'p', 'task-error', finalTask.error.message);
+    addDiscussionTaskLink(finalBlock, finalTask);
+  }
+  function renderDiscussionResult(run) {
+    const panel = $('#discussionResultPanel'), list = $('#discussionResult');
+    panel.classList.toggle('hidden', run.mode !== 'discussion');
+    if (run.mode !== 'discussion') return;
+    list.replaceChildren();
+    const discussion = run.discussion || {}, result = discussion.final || {};
+    if (!discussion.final) {
+      const terminal = ['needs_attention', 'failed', 'interrupted'].includes(discussion.status);
+      addText(list, 'p', terminal ? 'collab-unresolved' : 'muted', terminal
+        ? '研讨已停止，主 Agent 未能给出完整裁决。'
+        : '主 Agent 尚未完成裁决；各分析者原文仍可在“Agent 输出”查看。');
+      const reasons = discussion.unresolved?.length ? discussion.unresolved
+        : terminal && run.summary?.content ? [run.summary.content] : [];
+      for (const reason of reasons) addText(list, 'p', 'collab-unresolved', `停止原因：${reason}`);
+      return;
+    }
+    if (result.summary) addText(list, 'p', '', result.summary);
+    for (const decision of result.decisions || []) {
+      const card = document.createElement('article'); card.className = 'collab-info-card';
+      addText(card, 'b', '', `${decision.conflict_id || '分歧'} · ${decision.status === 'resolved' ? '已裁决' : '未决'}`);
+      if (decision.resolution) addText(card, 'p', '', decision.resolution);
+      const adopted = (decision.adopted_response_ids || []).map(id => (run.tasks || []).find(task => task.response_id === id)).filter(Boolean);
+      if (adopted.length) addText(card, 'p', 'collab-resolution', `采纳：${adopted.map(task => agentName(task.agent_id)).join('、')}；原回复保留。`);
+      const evidence = (decision.evidence_response_ids || []).map(id => (run.tasks || []).find(task => task.response_id === id)).filter(Boolean);
+      if (evidence.length) addText(card, 'small', 'collab-meta', `参考回复：${evidence.map(task => agentName(task.agent_id)).join('、')}`);
+      for (const task of adopted) addDiscussionTaskLink(card, task);
+      list.append(card);
+    }
+    const unresolved = result.unresolved?.length ? result.unresolved : discussion.unresolved || [];
+    for (const item of unresolved) addText(list, 'p', 'collab-unresolved', `未决：${item}`);
+    if (!unresolved.length && !(result.decisions || []).length) addText(list, 'p', 'muted', '本轮没有需要逐项裁决的分歧。');
   }
   function renderGroups(run) {
     const groups = Array.isArray(run.groups) && run.groups.length ? run.groups : Array.isArray(run.plan?.groups) ? run.plan.groups : [];
@@ -825,8 +1037,8 @@
   function renderDisputes(run) {
     const panel = $('#disputePanel'), list = $('#disputeList');
     const disputes = Array.isArray(run.disputes) ? run.disputes : [];
-    panel.classList.toggle('hidden', !run.collaboration && !disputes.length);
-    if (!run.collaboration && !disputes.length) return;
+    panel.classList.toggle('hidden', run.mode === 'discussion' || (!run.collaboration && !disputes.length));
+    if (run.mode === 'discussion' || (!run.collaboration && !disputes.length)) return;
     renderDisputeOptions(run);
     const signature = JSON.stringify([run.run_id, disputes]);
     if (state.disputeSignature === signature) return;
@@ -885,7 +1097,7 @@
   function renderReviewResults(run) {
     const disputes = Array.isArray(run.disputes) ? run.disputes : [];
     const panel = $('#resultReviewPanel'), list = $('#resultReviewList'); list.replaceChildren();
-    panel.classList.toggle('hidden', !run.collaboration && !disputes.length);
+    panel.classList.toggle('hidden', run.mode === 'discussion' || (!run.collaboration && !disputes.length));
     if (panel.classList.contains('hidden')) return;
     addText(list, 'p', 'collab-review-state', reviewStateLabel(run.review_state));
     if (!disputes.length) { addText(list, 'p', 'muted', '当前没有提交的同级争议。'); return; }
@@ -922,6 +1134,8 @@
       const meta = document.createElement('div'); meta.className = 'run-task-meta';
       addText(meta, 'b', '', agentName(task.agent_id));
       const roleLabel = planning ? '主 Agent · 规划'
+        : task.role === 'discussion_analysis' ? '共同研讨 · 独立分析'
+          : task.role === 'discussion_review' ? '共同研讨 · 定向互评'
         : task.role === 'orchestrator_reply' ? '主 Agent · 执行回复'
           : run.child_agents?.[task.agent_id] ? '本轮子 Agent'
             : task.parent_task_id ? '派生任务' : 'Agent';
@@ -930,14 +1144,23 @@
       const statePill = addText(row, 'span', `task-state ${task.overdue ? 'overdue' : task.status}`, statusLabel(task));
       statePill.setAttribute('aria-label', `任务状态：${statusLabel(task)}`);
       if (task.error?.message) addText(row, 'p', 'task-error', task.error.message);
-      const summary = task.summary;
+      const discussionPhase = task.role?.startsWith('discussion_');
+      const summary = discussionPhase && task.discussion_result
+        ? { status: 'ready', content: task.discussion_result.summary, source_agent_id: task.agent_id }
+        : task.summary;
       const taskSummary = document.createElement('div'); taskSummary.className = 'task-summary';
       const summaryText = typeof summary === 'string' ? summary : summary?.content;
       const summaryStatus = typeof summary === 'object' ? summary?.status : summaryText ? 'ready' : 'idle';
-      if (summaryStatus === 'ready' && summaryText) {
-        addText(taskSummary, 'span', 'task-summary-label', '模型摘要');
+      if (discussionPhase && !task.discussion_result) {
+        const terminal = TaskStatus.isTerminal(task.status);
+        addText(taskSummary, 'span', `task-summary-label ${terminal ? 'failed' : 'pending'}`, terminal ? '阶段输出未生成' : '阶段输出等待中');
+        addText(taskSummary, 'p', 'task-summary-content muted', task.error?.message
+          || (terminal ? '该阶段没有有效的结构化结论；可查看任务状态和原始回复。' : '等待该阶段完成。'));
+      } else if (summaryStatus === 'ready' && summaryText) {
+        addText(taskSummary, 'span', 'task-summary-label', task.role?.startsWith('discussion_') ? '阶段结论' : '模型摘要');
         addText(taskSummary, 'p', 'task-summary-content', summaryText);
-        const source = summary.source_agent_id ? `由 ${agentName(summary.source_agent_id)} 生成` : '由模型生成';
+        const source = task.role?.startsWith('discussion_') ? '由本轮研讨 Agent 生成'
+          : summary.source_agent_id ? `由 ${agentName(summary.source_agent_id)} 生成` : '由模型生成';
         addText(taskSummary, 'small', 'task-summary-meta', `${source}${summary.generated_at ? ` · ${dateLabel(summary.generated_at)}` : ''}`);
       } else {
         const labels = { idle: '摘要待生成', pending: '摘要生成中', failed: '摘要生成失败', unavailable: '模型摘要不可用', stale: '摘要已过期' };
@@ -966,6 +1189,29 @@
   function agentName(id) { return state.agents.find(agent => agent.id === id)?.name || id || '未知 Agent'; }
   function renderRunSummary(run, workerTasks) {
     const summary = run.summary || { status: 'unavailable', reason: 'No model summary adapter configured' };
+    if (run.mode === 'discussion') {
+      const labels = { ready: '主 Agent 裁决已完成', partial: '裁决含未决项', pending: '裁决进行中', failed: '裁决失败' };
+      const stoppedWithoutFinal = !run.discussion?.final && ['needs_attention', 'failed', 'interrupted'].includes(run.discussion?.status);
+      $('#summaryState').textContent = stoppedWithoutFinal ? '研讨已停止，未形成裁决' : labels[summary.status] || '等待主 Agent 裁决';
+      $('#summaryState').className = `summary-state ${summary.status || 'pending'}`;
+      $('#summaryContent').textContent = summary.content || run.discussion?.final?.summary
+        || '研讨尚未完成；独立分析和互评记录可在前两个页签查看。';
+      const reviewed = (run.discussion?.review_task_ids || []).length > 0;
+      $('#summaryHelp').textContent = stoppedWithoutFinal
+        ? '未形成完整裁决。停止原因和未决项见下方；已有的 Agent 原始回复仍可查看。'
+        : reviewed
+        ? '这是主 Agent 根据独立分析与最多一轮定向互评生成的裁决汇总；原始回复仍可展开查看。'
+        : '这是主 Agent 根据独立分析与分歧核对生成的裁决汇总；无分歧时会跳过互评。原始回复仍可展开查看。';
+      const failed = (run.tasks || []).filter(task => task.role?.startsWith('discussion_') && TaskStatus.isTerminal(task.status) && task.status !== 'succeeded');
+      const unresolved = run.discussion?.unresolved || [];
+      $('#summaryExceptions').textContent = [
+        failed.length ? `${failed.length} 个研讨阶段未成功。` : '',
+        unresolved.length ? `仍有 ${unresolved.length} 项未决；不可视作完整结论。` : '',
+        summary.error?.message ? `汇总异常：${summary.error.message}` : ''
+      ].filter(Boolean).join(' ');
+      $('#requestSummary').disabled = true;
+      return;
+    }
     const statusLabels = { ready: '完整模型摘要', partial: '部分模型摘要', stale: '摘要待更新', pending: '生成中', failed: '生成失败', unavailable: '模型摘要未就绪', blocked_review: '等待争议处理' };
     $('#summaryState').textContent = statusLabels[summary.status] || '模型摘要状态未知';
     $('#summaryState').className = `summary-state ${summary.status || 'unknown'}`;
@@ -1031,13 +1277,16 @@
         if (task) {
           const planning = task.role === 'orchestrator';
           const representative = task.role === 'representative', arbiter = task.role === 'arbiter';
-          const jump = addText(body, 'button', 'event-jump', planning ? '查看规划原始记录' : representative ? '查看代码代表' : arbiter ? '查看争议与仲裁' : '查看 Agent 输出');
+          const compare = task.role === 'discussion_compare', final = task.role === 'discussion_final';
+          const jump = addText(body, 'button', 'event-jump', planning ? '查看规划原始记录' : representative ? '查看代码代表' : arbiter ? '查看争议与仲裁' : compare ? '查看研讨分歧' : final ? '查看主 Agent 裁决' : '查看 Agent 输出');
           jump.type = 'button';
           jump.addEventListener('click', () => {
-            setRunTab(planning || representative || arbiter ? 'collaboration' : 'outputs', { focus: true });
+            setRunTab(final ? 'results' : planning || representative || arbiter || compare ? 'collaboration' : 'outputs', { focus: true });
             if (planning) $('#planningRecord').open = true;
             if (representative) $('#representativePanel').focus();
             if (arbiter) $('#disputePanel').focus();
+            if (compare) $('#discussionPanel').focus();
+            if (final) $('#discussionResultPanel').focus();
           });
         }
       }
@@ -1116,15 +1365,20 @@
     try { deadlineSeconds = getDeadlineSeconds(); }
     catch (error) { showError(error); $('#runDeadline').focus(); return; }
     if (state.mode === 'direct' && !state.selectedTargets.size) { showError(new Error('请至少选择一个已注册 Agent。')); return; }
-    if (state.mode === 'orchestrated' && state.hub?.orchestrator_state !== 'enabled') { showError(new Error('请先启用有效的主 Agent。')); return; }
-    let collaboration;
-    try { collaboration = await buildCollaborationPayload(); }
-    catch (error) { showError(error); $('#collaborationSetup').open = true; return; }
+    if (['orchestrated', 'discussion'].includes(state.mode) && state.hub?.orchestrator_state !== 'enabled') { showError(new Error('请先启用有效的主 Agent。')); return; }
+    let collaboration, discussionPayload;
+    try {
+      if (state.mode === 'discussion') discussionPayload = await buildDiscussionPayload();
+      else collaboration = await buildCollaborationPayload();
+    }
+    catch (error) { showError(error); if (state.mode === 'orchestrated') $('#collaborationSetup').open = true; return; }
     $('#startRun').disabled = true; $('#startRun').textContent = '正在提交…';
     const idempotencyKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-    const body = state.mode === 'orchestrated'
-      ? { mode: 'orchestrated', dispatch_policy: $('#dispatchPolicy').value, prompt }
-      : { mode: 'direct', prompt, target_agent_ids: [...state.selectedTargets] };
+    const body = state.mode === 'discussion'
+      ? { mode: 'discussion', prompt, ...discussionPayload }
+      : state.mode === 'orchestrated'
+        ? { mode: 'orchestrated', dispatch_policy: $('#dispatchPolicy').value, prompt }
+        : { mode: 'direct', prompt, target_agent_ids: [...state.selectedTargets] };
     if (deadlineSeconds != null) body.deadline_seconds = deadlineSeconds;
     if (collaboration) body.collaboration = collaboration;
     try {
@@ -1135,9 +1389,17 @@
         state.selectedRepresentatives.clear(); $('#presetArbiter').value = '';
         $('#collaborationSetup').open = false; setRepresentativeMode(); setAdvancedMode(); renderCollaborationSelectors(); renderCollabFileList();
       }
+      if (discussionPayload) {
+        $('#discussionFiles').value = ''; $('#discussionVersion').value = '';
+        state.selectedDiscussion.clear(); renderTargetPicks();
+        $('#discussionSource').open = false;
+        renderDiscussionFileList();
+      }
       state.currentRunId = accepted.run_id; state.events = []; state.eventCursor = 0;
       await selectRun(accepted.run_id, { silent: true });
-      toast(state.mode === 'orchestrated' ? `主 Agent 计划已开始 · ${agentName(state.hub.orchestrator_agent_id)}` : `本轮任务已受理 · ${accepted.accepted_tasks?.length || 0} 个 Agent`);
+      toast(state.mode === 'discussion' ? `共同研讨已开始 · 主 Agent：${agentName(state.hub.orchestrator_agent_id)}`
+        : state.mode === 'orchestrated' ? `主 Agent 计划已开始 · ${agentName(state.hub.orchestrator_agent_id)}`
+          : `本轮任务已受理 · ${accepted.accepted_tasks?.length || 0} 个 Agent`);
       clearError();
     } catch (error) { showError(error); }
     finally { $('#startRun').textContent = '并行派发 ↑'; updateDispatchState(); }
@@ -1296,8 +1558,14 @@
     if (!button) return;
     const id = button.dataset.agentId;
     if (!state.agents.some(agent => agent.id === id)) return;
-    if (state.selectedTargets.has(id)) state.selectedTargets.delete(id); else state.selectedTargets.add(id);
-    const selected = state.selectedTargets.has(id);
+    if (state.mode === 'orchestrated') return;
+    const discussion = state.mode === 'discussion';
+    if (discussion && id === state.hub?.orchestrator_agent_id) return;
+    const selectedSet = discussion ? state.selectedDiscussion : state.selectedTargets;
+    if (selectedSet.has(id)) selectedSet.delete(id);
+    else if (discussion && selectedSet.size >= 3) { toast('共同研讨最多选择 3 位分析者。'); return; }
+    else selectedSet.add(id);
+    const selected = selectedSet.has(id);
     button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('selected', selected);
     const mark = $('.target-check', button); if (mark) mark.textContent = selected ? '✓' : '+';
     updateDispatchState();
@@ -1322,6 +1590,8 @@
     $('#enableAdvancedCollaboration').addEventListener('change', setAdvancedMode);
     $('#enableCollaboration').addEventListener('change', setRepresentativeMode);
     $('#collabFiles').addEventListener('change', renderCollabFileList);
+    $('#discussionFiles').addEventListener('change', renderDiscussionFileList);
+    $('#discussionMaxCalls').addEventListener('input', updateDispatchState);
     $('#representativePicks').addEventListener('click', event => {
       const button = event.target.closest('[data-agent-id]');
       if (!button) return;

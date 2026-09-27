@@ -496,11 +496,11 @@ class Handler(BaseHTTPRequestHandler):
             except hub.HubError as exc:
                 status, body = _api_error(exc)
                 return self._send(status, json.dumps(body, ensure_ascii=False))
-            if not isinstance(mode, str) or mode not in ("direct", "orchestrated"):
-                return self._send(400, '{"ok":false,"error":"invalid_request","message":"mode must be direct or orchestrated"}')
+            if not isinstance(mode, str) or mode not in ("direct", "orchestrated", "discussion"):
+                return self._send(400, '{"ok":false,"error":"invalid_request","message":"mode must be direct, orchestrated or discussion"}')
             if set(payload) - {"mode", "prompt", "target_agent_ids", "deadline_seconds", "dispatch_policy", "collaboration"}:
                 return self._send(400, '{"ok":false,"error":"invalid_request","message":"Unknown run field"}')
-            dispatch_policy = payload.get("dispatch_policy", "preview")
+            dispatch_policy = payload.get("dispatch_policy", "auto" if mode == "discussion" else "preview")
             if dispatch_policy not in ("auto", "preview"):
                 return self._send(400, '{"ok":false,"error":"invalid_request","message":"dispatch_policy must be auto or preview"}')
             try:
