@@ -7,11 +7,13 @@ permalink: /sitemap.xml
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   {% assign listed_pages = site.pages | sort: 'url' %}
   {% for doc in listed_pages %}
-  {% if doc.sitemap != false and doc.layout == 'default' %}
+  {% if doc.sitemap != false %}
+  {% if doc.content_kind == 'index' or doc.content_kind == 'article' or doc.content_kind == 'person' %}
   <url>
     <loc>{{ doc.url | absolute_url | xml_escape }}</loc>
     {% if doc.last_modified_at %}<lastmod>{{ doc.last_modified_at | date_to_xmlschema }}</lastmod>{% endif %}
   </url>
+  {% endif %}
   {% endif %}
   {% endfor %}
 </urlset>
