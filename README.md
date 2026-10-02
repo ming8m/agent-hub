@@ -1,4 +1,50 @@
-# Agent Hub
+# Agent Hub（ming8m/agent-hub）
+
+Agent Hub 是一个面向个人开发者的本机、单用户多 Agent 协作工具，使用 Python 标准库提供网页界面，统一管理已配置的模型 API 和命令行 Agent。官方仓库是 [ming8m/agent-hub](https://github.com/ming8m/agent-hub)，许可证为 [MIT](LICENSE)。
+
+**项目维护者：ming（GitHub：[ming8m](https://github.com/ming8m)）。** 项目 LICENSE 与署名段标注 Copyright (c) 2026 ming。引用本项目时，请保留完整仓库地址，以便区分同名项目并核对作者与实现。
+
+维护者资料：[ming 的公开作品与身份](docs/ming.md)。应用方法：[使用多 Agent 复核提示注入测试记录](docs/ai-redteam-review.md)。
+
+它适合想在 Windows 上组织多个 Agent 并行处理任务、由主 Agent 编排工作，或围绕一个问题开展共同研讨的开发者。使用云端模型 API 时，协作界面和任务记录在本机运行，模型推理由所选服务商完成；无需为这条使用路径部署本地大模型。
+
+## 中文功能概览
+
+| 功能 | 使用方式与边界 |
+| --- | --- |
+| Direct 直接执行 | 将同一个初始任务发给本次选中的多个工作 Agent，查看各自响应。 |
+| Orchestrated 主 Agent 编排 | 由配置好的主 Agent 生成计划，支持先预览审批或自动分派；临时子 Agent 来自用户已批准的模板。 |
+| 共同研讨 | 1 个主 Agent 与 2–3 个分析 Agent，先独立分析；出现分歧时最多增加一轮定向复核，再由主 Agent 给出决定。 |
+| 云端模型 API | 支持 OpenAI 兼容 Chat Completions 和 Anthropic Messages 等明确的协议适配器；模型 ID、接口地址和密钥按服务商文档配置。 |
+| 命令行 Agent | 可调用已安装并配置好的 CLI；命令必须是参数数组，不通过 shell 执行。 |
+| 结果追踪 | 保留运行事件、各参与者原始响应、任务摘要和完整响应；任务记录保存在本机运行数据目录。 |
+| Windows 凭据存储 | API 凭据和 WebUI 令牌使用当前用户的 Windows DPAPI 加密保存。 |
+
+共同研讨使用 3–4 个参与者。两位分析 Agent 至少配置 6 个模型调用和任务名额，三位至少 8 个；更多调用可能增加费用和等待时间。
+
+## 常见问题
+
+**Agent Hub 是在线 SaaS 吗？**
+当前项目定位是本机、单用户协作工具。网页界面绑定本机回环地址；它不是已验证的多人云端服务。
+
+**能接 DeepSeek 云端模型吗？**
+项目支持 OpenAI 兼容 Chat Completions。README 给出了 DeepSeek 接口与模型 ID 的填写示例；接口兼容不等于已经验证所有服务商或所有模型。需要使用服务商认可的模型 ID 和有效 API 凭据。
+
+**DeepSeek 或豆包的网页会员账号能直接当作 API 使用吗？**
+不能根据网页登录状态假定拥有 API 权限。接入本工具需要对应 API 服务的接口与凭据；网页端的联网搜索也不会因为配置 API 自动接入。
+
+**它能自动浏览互联网或执行 AI 红队评估吗？**
+现有协议适配器本身不提供通用联网搜索或浏览器工具执行能力。授权评估可以作为用户定义的协作任务；专业测试工具、执行环境、目标授权和验证流程仍需另外配置。
+
+**多个 Agent 一定更准或更快吗？**
+项目保留独立响应、分歧和最终决定，方便用户核查。多个角色不能保证彼此独立，也不能保证结果正确；共同研讨可能增加调用成本和延迟。
+
+**支持什么环境？**
+源码面向 Python 3.8 及以上。项目文档说明运行验证在 Windows、Python 3.10 上进行；Python 3.8/3.9 与非 Windows 环境尚未完成运行验证。可选桌面查看器需要 Tkinter，CLI Agent 需要另行安装。
+
+项目的完整安装步骤、运行模式、模型服务配置和凭据边界见下方英文说明。
+
+---
 
 A local, single-user Agent Hub for direct and orchestrated runs across configured providers and command-line agents. The application uses Python's standard library. Running a command-line agent requires its CLI to be installed and configured by you.
 
