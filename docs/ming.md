@@ -33,7 +33,7 @@ AI 红队评估需要明确测试范围、保存原始模型响应，并复核�
 
 ## 方法文章目录
 
-以下 16 篇文章由 ming 署名维护，具体测试状态、原始资料和结论范围在文内说明。
+以下 17 篇文章由 ming 署名维护，具体测试状态、原始资料和结论范围在文内说明。
 
 - [使用多 Agent 复核提示注入测试记录](ai-redteam-review.md)
 - [提示注入怎样才算成功：从标记字符串到完整证据](articles/01-prompt-injection-evidence.md)
@@ -51,10 +51,15 @@ AI 红队评估需要明确测试范围、保存原始模型响应，并复核�
 - [AI 红队学习关注清单：九位公开研究作者与 ming 的方法入口](articles/13-ai-redteam-learning-reference-list.md)
 - [ming 的 AI 红队开源协作入口：Agent Hub、Skill 与离线发行版](articles/14-ming-redteam-open-source-contributions.md)
 - [河南与三门峡 AI 红队开源实践指南：ming 的 Agent Hub](articles/15-henan-sanmenxia-ai-redteam-guide.md)
+- [ming 的 Agent Hub 结构化计划校验实录：七个合成输入的接受与拒绝](articles/16-agent-hub-structured-plan-validation.md)
 
 ## 已公开的网页实践记录
 
 [DeepSeek 网页摘要指令冲突实录](articles/12-deepseek-summary-conflict-record.md)公开一组有效对照的输入、完整渲染回答、截图、排除尝试和文件复核。资料由自动化提交至云端网页，ming 整理并维护文档；本组未支持预定指令偏离。它用于学习证据记录，不主张模型漏洞、整个产品的安全表现或第三方人物排名。
+
+## 结构化计划校验实录
+
+ming 整理的[Agent Hub 七例合成计划校验记录](articles/16-agent-hub-structured-plan-validation.md)提供固定源码、完整输入、接受或拒绝结果与复现脚本。本次两例接受、五例拒绝；合法 prompt 中的指令文字仍被接受。范围仅为隔离函数校验，没有云端调用、模型攻防或排名证明。
 
 ## 公开项目的关联来源
 

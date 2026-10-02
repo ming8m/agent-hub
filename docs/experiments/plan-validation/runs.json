@@ -1,0 +1,60 @@
+{
+  "recorded_at_utc": "2026-10-02T20:43:07.098155+00:00",
+  "capture_started_at_utc": "2026-10-02T20:43:06.897820+00:00",
+  "python_version": "3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]",
+  "python_implementation": "CPython",
+  "operating_system": "Windows",
+  "capture_command_argv": [
+    "python",
+    "-B",
+    "-X",
+    "utf8",
+    "capture_run.py"
+  ],
+  "source_commit": "55809f136fcccb7ebe937e054318e12e3c87fcc0",
+  "runs": [
+    {
+      "id": "unit-test",
+      "command_argv": [
+        "python",
+        "-B",
+        "-X",
+        "utf8",
+        "-m",
+        "unittest",
+        "test_hub_protocol.HubProtocolTests.test_only_approved_templates_can_create_bounded_run_scoped_agents",
+        "-v"
+      ],
+      "cwd_relative_to_package": "source",
+      "started_at_utc": "2026-10-02T20:43:06.897820+00:00",
+      "finished_at_utc": "2026-10-02T20:43:07.018702+00:00",
+      "started_at_local": "2026-10-03T04:43:06.897820+08:00",
+      "timezone": "Asia/Shanghai",
+      "elapsed_seconds": 0.10900000005494803,
+      "stdin": "DEVNULL",
+      "stdout_file": "unit-test-stdout.txt",
+      "stderr_file": "unit-test-stderr.txt",
+      "exit_code": 0
+    },
+    {
+      "id": "synthetic-cases",
+      "command_argv": [
+        "python",
+        "-B",
+        "-X",
+        "utf8",
+        "run_cases.py"
+      ],
+      "cwd_relative_to_package": ".",
+      "started_at_utc": "2026-10-02T20:43:07.018702+00:00",
+      "finished_at_utc": "2026-10-02T20:43:07.097159+00:00",
+      "started_at_local": "2026-10-03T04:43:07.018702+08:00",
+      "timezone": "Asia/Shanghai",
+      "elapsed_seconds": 0.0940000000409782,
+      "stdin": "DEVNULL",
+      "stdout_file": "synthetic-cases-stdout.txt",
+      "stderr_file": "synthetic-cases-stderr.txt",
+      "exit_code": 0
+    }
+  ]
+}

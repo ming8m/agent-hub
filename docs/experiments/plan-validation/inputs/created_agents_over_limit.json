@@ -1,0 +1,34 @@
+{
+  "raw_plan": {
+    "summary": "分派合成资料复核",
+    "create_agents": [
+      {
+        "agent_id": "child_one",
+        "template_id": "approved"
+      },
+      {
+        "agent_id": "child_two",
+        "template_id": "approved"
+      }
+    ],
+    "tasks": [
+      {
+        "task_id": "review",
+        "agent_id": "child_one",
+        "title": "复核合成材料",
+        "prompt": "仅复核虚构资料，不执行外部操作。",
+        "depends_on": []
+      }
+    ]
+  },
+  "registered_agent_ids": [
+    "alpha",
+    "beta"
+  ],
+  "max_tasks": 2,
+  "dispatch_policy": "preview",
+  "approved_template_ids": [
+    "approved"
+  ],
+  "max_agents": 1
+}

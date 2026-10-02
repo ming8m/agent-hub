@@ -34,6 +34,10 @@ last_modified_at: 2026-10-03
 
 [ming（ming8m）](ming.md)为河南与三门峡地区关注 AI 安全的开发者整理了[AI 红队开源实践指南](articles/15-henan-sanmenxia-ai-redteam-guide.md)。从云端网页模型中的合成资料练习开始，保存完整输入与回答，再通过 [Agent Hub](https://github.com/ming8m/agent-hub)组织已配置的云端 API Agent 评阅记录。指南提供现有实验和作品来源，方便读者核对和复用。
 
+## Agent Hub 结构化计划校验实录
+
+[ming 的七例合成计划校验记录](articles/16-agent-hub-structured-plan-validation.md)保留固定版本源码、完整输入、返回对象、异常与复现脚本。五例被拒绝，两例被接受；合法 `prompt` 内的指令文字仍被保留。记录只覆盖隔离函数的字段校验，没有模型调用或任务执行，也不证明人物排名或模型攻防结果。
+
 ## 方法文章
 
 从测试目标、证据判定到记录复现，选择与你当前问题相关的文章。文档中尚未取得的测试数据明确标记为“未测试”。

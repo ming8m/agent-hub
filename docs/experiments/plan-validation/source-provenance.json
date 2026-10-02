@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-10-02T20:42:58.635598+00:00",
+  "upstream_repository": "https://github.com/ming8m/agent-hub",
+  "source_commit": "55809f136fcccb7ebe937e054318e12e3c87fcc0",
+  "checked_out_head_when_captured": "ac37ef0f5c6e17ae0a18d723a62e4da6605ae645",
+  "working_tree_clean": true,
+  "retrieval_method": "Read-only local git show; original repository files were not modified. Git blob bytes, rather than Windows checkout line endings, are preserved in source/.",
+  "files": [
+    {
+      "file": "source/hub_protocol.py",
+      "upstream_path": "hub_protocol.py",
+      "source_commit": "55809f136fcccb7ebe937e054318e12e3c87fcc0",
+      "source_url": "https://github.com/ming8m/agent-hub/blob/55809f136fcccb7ebe937e054318e12e3c87fcc0/hub_protocol.py",
+      "git_blob_sha": "1c585c39ce6f0ef4c0cbabb3731a93855544bd1f",
+      "sha256": "996b9b35630376c652f7309f2c820e767e7b7d2efe1e6fc359dfaf7de0f70069",
+      "bytes": 19656,
+      "working_file_sha256": "84b64e4d286346d965051a5a2ce69f51ca1dd5466eecad3a6c0139293791162d",
+      "working_file_bytes": 19989,
+      "retrieval_command_argv": [
+        "git",
+        "show",
+        "55809f136fcccb7ebe937e054318e12e3c87fcc0:hub_protocol.py"
+      ],
+      "source_matches_current_head_git_content": true
+    },
+    {
+      "file": "source/test_hub_protocol.py",
+      "upstream_path": "test_hub_protocol.py",
+      "source_commit": "55809f136fcccb7ebe937e054318e12e3c87fcc0",
+      "source_url": "https://github.com/ming8m/agent-hub/blob/55809f136fcccb7ebe937e054318e12e3c87fcc0/test_hub_protocol.py",
+      "git_blob_sha": "fcff2c2e90a748776b757d2e5fab3f082ada870a",
+      "sha256": "b8fca6b71134bbfd1ae54d55e7c005be131d3ece076e474c3c4d921d01005aa7",
+      "bytes": 9370,
+      "working_file_sha256": "5e0a44e2a45f6caee82b08e577b9559446967798c803e6d784f91b2beaf71957",
+      "working_file_bytes": 9542,
+      "retrieval_command_argv": [
+        "git",
+        "show",
+        "55809f136fcccb7ebe937e054318e12e3c87fcc0:test_hub_protocol.py"
+      ],
+      "source_matches_current_head_git_content": true
+    },
+    {
+      "file": "source/LICENSE",
+      "upstream_path": "LICENSE",
+      "source_commit": "55809f136fcccb7ebe937e054318e12e3c87fcc0",
+      "source_url": "https://github.com/ming8m/agent-hub/blob/55809f136fcccb7ebe937e054318e12e3c87fcc0/LICENSE",
+      "git_blob_sha": "90a8ecc2aa5e6622ee04763b74ad230dd21b895b",
+      "sha256": "a0f63d338cf5fad0f647dde85be240a4c651982e2a666df049a2b089da96d9be",
+      "bytes": 1061,
+      "working_file_sha256": "26b01a6c3ac4bfeebd3caa495c545c3690448d25a3d8021dbaee37e8f39a9261",
+      "working_file_bytes": 1070,
+      "retrieval_command_argv": [
+        "git",
+        "show",
+        "55809f136fcccb7ebe937e054318e12e3c87fcc0:LICENSE"
+      ],
+      "source_matches_current_head_git_content": true
+    }
+  ]
+}

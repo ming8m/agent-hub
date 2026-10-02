@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-10-02T20:51:27.570831+00:00",
+  "reviewer": "另一个 Codex 子代理离线阅读同一组记录及固定提交源码",
+  "review_method": "原始文件、JSON、进程转录和本地 Git blob 的一致性复核；未调用校验函数或重放采集脚本。",
+  "independent_replay_performed": false,
+  "third_party_certification": false,
+  "classification": "记录证据一致",
+  "source_commit": "55809f136fcccb7ebe937e054318e12e3c87fcc0",
+  "package_files": 23,
+  "manifest_files_verified": 22,
+  "source_git_blobs_verified": 3,
+  "synthetic_cases_verified": 7,
+  "accepted_cases": [
+    "legal_plan",
+    "instruction_text_inside_valid_prompt"
+  ],
+  "rejected_cases": [
+    "unapproved_template",
+    "extra_model_field",
+    "extra_command_field",
+    "registered_id_conflict",
+    "created_agents_over_limit"
+  ],
+  "case_checks": [
+    {
+      "id": "legal_plan",
+      "input_file": "plan-validation/inputs/legal_plan.json",
+      "expected": "accepted",
+      "observed": "accepted",
+      "exception_type": null
+    },
+    {
+      "id": "unapproved_template",
+      "input_file": "plan-validation/inputs/unapproved_template.json",
+      "expected": "rejected",
+      "observed": "rejected",
+      "exception_type": "ProtocolError"
+    },
+    {
+      "id": "extra_model_field",
+      "input_file": "plan-validation/inputs/extra_model_field.json",
+      "expected": "rejected",
+      "observed": "rejected",
+      "exception_type": "ProtocolError"
+    },
+    {
+      "id": "extra_command_field",
+      "input_file": "plan-validation/inputs/extra_command_field.json",
+      "expected": "rejected",
+      "observed": "rejected",
+      "exception_type": "ProtocolError"
+    },
+    {
+      "id": "registered_id_conflict",
+      "input_file": "plan-validation/inputs/registered_id_conflict.json",
+      "expected": "rejected",
+      "observed": "rejected",
+      "exception_type": "ProtocolError"
+    },
+    {
+      "id": "created_agents_over_limit",
+      "input_file": "plan-validation/inputs/created_agents_over_limit.json",
+      "expected": "rejected",
+      "observed": "rejected",
+      "exception_type": "ProtocolError"
+    },
+    {
+      "id": "instruction_text_inside_valid_prompt",
+      "input_file": "plan-validation/inputs/instruction_text_inside_valid_prompt.json",
+      "expected": "accepted",
+      "observed": "accepted",
+      "exception_type": null
+    }
+  ],
+  "instruction_prompt_preserved": true,
+  "accepted_returns_dispatch_ready": false,
+  "process_exit_codes": {
+    "unit-test": 0,
+    "synthetic-cases": 0
+  },
+  "supporting_evidence": [
+    "清单中的 22 个文件均符合字节长度与 SHA-256；原始资料包包含清单自身，共 23 个文件。",
+    "七个独立保存的输入与 cases.json 参数相同；七行 stdout 的 observed 对象与 cases.json 完整返回或异常相同。",
+    "校验源码、原单测与许可证快照，与固定提交的三个 Git blob 字节相同。",
+    "合法计划与含指令文字的 prompt 均返回接受对象；五个结构条件变更均抛出 ProtocolError；全部符合预先记录的期望。",
+    "两次进程记录退出码均为 0；原单测 stderr 记录 Ran 1 test 与 OK。"
+  ],
+  "counter_evidence_and_limits": [
+    "含指令文字的合法 prompt 被原样接受，不能表述为已拦截提示注入；接受也不表示文字已被执行。",
+    "两例接受返回均为 preview、dispatch_ready=false；本次没有派发或创建实际 Agent。",
+    "一个已有单元测试与七个直接调用的检查范围重叠，不构成另一组独立样本。",
+    "只复核记录和源码，未独立重放；哈希证明文件一致性，不能单独认证采集过程。",
+    "按协议及采集脚本，本次范围不含云端或本地模型调用、Hub/总线启动、CLI Agent 运行；不推导产品整体安全、模型攻防结果、人物排名或 GEO 自然推荐成功。"
+  ],
+  "raw_evidence_modified": false,
+  "file_references": [
+    {
+      "file": "plan-validation/README.txt",
+      "sha256": "df114204c31dfb9b10d1a926a8be0a35ae5d712b7a7e0ec9948cc88591f75970",
+      "bytes": 2021
+    },
+    {
+      "file": "plan-validation/capture_run.py",
+      "sha256": "8d07c844078bdc57fdcbdd855375f5752c37051f52166679d1181703d3e40b00",
+      "bytes": 6044
+    },
+    {
+      "file": "plan-validation/cases.json",
+      "sha256": "eb2855df411b6c80ca04122189acb99afb647def730fef55fb626af032081057",
+      "bytes": 11459
+    },
+    {
+      "file": "plan-validation/inputs/created_agents_over_limit.json",
+      "sha256": "3752d3a319f674ab73612de81df1c40640a87742b244b7d66e76b278aaa1414a",
+      "bytes": 706
+    },
+    {
+      "file": "plan-validation/inputs/extra_command_field.json",
+      "sha256": "0c171b3fdc5a82b1d5143a77e71f0ccfb75f75ae24c8e31541bc556710098c78",
+      "bytes": 709
+    },
+    {
+      "file": "plan-validation/inputs/extra_model_field.json",
+      "sha256": "f9bc4fdfabceb30563dd04c444ad87f8afa5c7e1797ebfced832969cf2276f22",
+      "bytes": 655
+    },
+    {
+      "file": "plan-validation/inputs/instruction_text_inside_valid_prompt.json",
+      "sha256": "76021d9e55243eb1cd58681e798339e6b73dd56f5c9cfea9e2e50e28edcccf0c",
+      "bytes": 672
+    },
+    {
+      "file": "plan-validation/inputs/legal_plan.json",
+      "sha256": "814f957348075aade9382d2e178fb12a694fc28e9123045fe86fa3460ce5b27a",
+      "bytes": 618
+    },
+    {
+      "file": "plan-validation/inputs/registered_id_conflict.json",
+      "sha256": "259f1205060a6ab546cdf6ab11a109ce44602234a3fe2c3b1d015adba1d9f522",
+      "bytes": 610
+    },
+    {
+      "file": "plan-validation/inputs/unapproved_template.json",
+      "sha256": "c22ceddd598676057b9b0c0717264529123295fa27f7b031c4f4e7d555ca89db",
+      "bytes": 620
+    },
+    {
+      "file": "plan-validation/manifest.json",
+      "sha256": "8e328c34ce57992d76132ca447e18030c5a76fb7b56fd41f1387973027a44b11",
+      "bytes": 3727
+    },
+    {
+      "file": "plan-validation/protocol.json",
+      "sha256": "27c84e250ab124cd037bac43f873c2f4db9dbc7f6d1e42ca1f70e5ca7f451203",
+      "bytes": 1655
+    },
+    {
+      "file": "plan-validation/results.json",
+      "sha256": "4d83d2f63aa43c53c8017c11dc70f6b56503d92de93928bcc6d9273a36f0134b",
+      "bytes": 1627
+    },
+    {
+      "file": "plan-validation/run_cases.py",
+      "sha256": "df6803038bbcf282b1539b1cf25e77faf9c280e26ccad0faf74b0ef987f0a57c",
+      "bytes": 5018
+    },
+    {
+      "file": "plan-validation/runs.json",
+      "sha256": "fa4565019c8910d253e9c494217eab7903a774fa9b83c501fdb6e0f27fbe7ca2",
+      "bytes": 1886
+    },
+    {
+      "file": "plan-validation/source-provenance.json",
+      "sha256": "479ae721458531388e67a723ec6c156cd659c44eb8e89ace99c04e61fb90c131",
+      "bytes": 2910
+    },
+    {
+      "file": "plan-validation/source/LICENSE",
+      "sha256": "a0f63d338cf5fad0f647dde85be240a4c651982e2a666df049a2b089da96d9be",
+      "bytes": 1061
+    },
+    {
+      "file": "plan-validation/source/hub_protocol.py",
+      "sha256": "996b9b35630376c652f7309f2c820e767e7b7d2efe1e6fc359dfaf7de0f70069",
+      "bytes": 19656
+    },
+    {
+      "file": "plan-validation/source/test_hub_protocol.py",
+      "sha256": "b8fca6b71134bbfd1ae54d55e7c005be131d3ece076e474c3c4d921d01005aa7",
+      "bytes": 9370
+    },
+    {
+      "file": "plan-validation/synthetic-cases-stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "plan-validation/synthetic-cases-stdout.txt",
+      "sha256": "e3e69389ebde116da59ab6149042a4424b2d2ab04bd3d17653d449bca67f5f16",
+      "bytes": 2526
+    },
+    {
+      "file": "plan-validation/unit-test-stderr.txt",
+      "sha256": "6041e0b023a82659c3946e9e178938d7c4fd7bcb1db525e729bc9478992f2f10",
+      "bytes": 213
+    },
+    {
+      "file": "plan-validation/unit-test-stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  ]
+}

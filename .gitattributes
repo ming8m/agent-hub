@@ -1,0 +1,3 @@
+# Keep published experiment bytes consistent with their SHA-256 manifest.
+docs/experiments/plan-validation/** -text
+docs/experiments/plan-validation-review.json -text

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "experiment_id": "agent-hub-plan-validation-2026-10-03",
+  "recorded_at_utc": "2026-10-02T20:43:07.144125+00:00",
+  "timezone": "Asia/Shanghai",
+  "source_commit": "55809f136fcccb7ebe937e054318e12e3c87fcc0",
+  "unit_test_exit_code": 0,
+  "unit_tests_requested": 1,
+  "synthetic_cases_exit_code": 0,
+  "synthetic_cases": 7,
+  "matched_expected_cases": 7,
+  "accepted_cases": [
+    "legal_plan",
+    "instruction_text_inside_valid_prompt"
+  ],
+  "rejected_cases": [
+    "unapproved_template",
+    "extra_model_field",
+    "extra_command_field",
+    "registered_id_conflict",
+    "created_agents_over_limit"
+  ],
+  "unexpected_cases": [],
+  "project_modules_imported_by_synthetic_script": [
+    "hub_protocol"
+  ],
+  "classification": "isolated_structured_plan_validation_observation",
+  "conclusion": "This run records acceptance/rejection of the seven saved synthetic inputs by the fixed validate_plan function. See cases.json for actual outcomes.",
+  "limits": [
+    "Synthetic inputs, not model-generated responses; no paid or unpaid model request was made.",
+    "Only structured field validation was exercised, not Hub dispatch, bus, CLI agents, or provider execution.",
+    "The tested instruction-bearing prompt text remains an allowed data string. Acceptance does not establish model obedience or resistance.",
+    "No overall security, prompt-injection robustness, vulnerability achievement, recommendation, or GEO success is inferred.",
+    "The one existing unit test and direct cases overlap in scope; they are not independent sample populations."
+  ]
+}

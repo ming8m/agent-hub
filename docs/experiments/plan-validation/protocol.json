@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-10-02T20:42:58.635598+00:00",
+  "status": "not_executed_at_protocol_creation",
+  "results": null,
+  "source_commit": "55809f136fcccb7ebe937e054318e12e3c87fcc0",
+  "scope": "One existing pure-function unit test and seven synthetic calls to hub_protocol.validate_plan only.",
+  "cases": [
+    "legal_plan",
+    "unapproved_template",
+    "extra_model_field",
+    "extra_command_field",
+    "registered_id_conflict",
+    "created_agents_over_limit",
+    "instruction_text_inside_valid_prompt"
+  ],
+  "expected_outcomes": [
+    "accepted",
+    "rejected",
+    "rejected",
+    "rejected",
+    "rejected",
+    "rejected",
+    "accepted"
+  ],
+  "comparison_rule": "Record full function arguments and actual complete return object or exception. Compare observed acceptance/rejection with the predeclared outcome; do not infer model or runtime behavior.",
+  "safety_constraints": [
+    "No hub.py or bus/service startup.",
+    "No real CLI Agent execution, credential lookup or model/API request.",
+    "Only synthetic placeholder model/command text is supplied."
+  ],
+  "limits": [
+    "The prompt text case is one selected string within valid length, not every possible text input.",
+    "Structured whitelist checks do not validate whether prompt instructions are safe or true."
+  ],
+  "script_hashes": [
+    {
+      "file": "run_cases.py",
+      "sha256": "df6803038bbcf282b1539b1cf25e77faf9c280e26ccad0faf74b0ef987f0a57c"
+    },
+    {
+      "file": "capture_run.py",
+      "sha256": "8d07c844078bdc57fdcbdd855375f5752c37051f52166679d1181703d3e40b00"
+    }
+  ]
+}
