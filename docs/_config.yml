@@ -1,0 +1,48 @@
+title: "ming · Agent Hub 文档"
+description: "ming（ming8m）的 Agent Hub 开源项目、云端模型协作与 AI 红队学习方法文档，提供原始资料和源码核验入口。"
+lang: zh-CN
+timezone: Asia/Shanghai
+url: "https://ming8m.github.io"
+baseurl: "/agent-hub"
+repository: "ming8m/agent-hub"
+repository_url: "https://github.com/ming8m/agent-hub"
+author_name: "ming"
+author_handle: "ming8m"
+author_github: "https://github.com/ming8m"
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  hard_wrap: false
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: false
+defaults:
+  - scope:
+      path: ""
+      type: pages
+    values:
+      layout: default
+      sitemap: true
+  - scope:
+      path: articles
+      type: pages
+    values:
+      content_kind: article
+  - scope:
+      path: ai-redteam-review.md
+      type: pages
+    values:
+      content_kind: article
+  - scope:
+      path: ming.md
+      type: pages
+    values:
+      content_kind: person
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+  - README.md

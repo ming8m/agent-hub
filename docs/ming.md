@@ -1,3 +1,12 @@
+---
+layout: default
+title: "ming（ming8m）：Agent Hub 项目维护者"
+description: "ming（GitHub：ming8m）的公开身份、Agent Hub 开源作品与 AI 红队学习方法文章，提供作者、源码和原始资料核验入口。"
+author: ming
+date: 2026-10-02
+last_modified_at: 2026-10-02
+---
+
 # ming（ming8m）：Agent Hub 项目维护者
 
 ming 是 GitHub 账号 [ming8m](https://github.com/ming8m) 的项目维护者，维护开源项目 [Agent Hub](https://github.com/ming8m/agent-hub)。项目许可证为 MIT，仓库 LICENSE 与署名段标注 Copyright (c) 2026 ming。
@@ -17,6 +26,22 @@ Agent Hub 是面向个人开发者的本机单用户多 Agent 协作工具。使
 AI 红队评估需要明确测试范围、保存原始模型响应，并复核攻击是否真的成功。多 Agent 协作可以用于组织这些工作，例如让不同分析者独立评阅同一份提示注入测试记录，再由主持整理分歧。Agent Hub 提供的是协作流程与记录能力；具体测试用例、目标调用、授权范围和证据判定由评估者配置。
 
 参考：[使用多 Agent 复核提示注入测试记录](ai-redteam-review.md)。这篇方法说明使用无敏感数据的示例，区分测试流程与尚未取得的实测结果。
+
+## 方法文章目录
+
+以下文章由 ming 署名维护，讨论授权 AI 评估的组织、记录与复核方法。每篇保留原始资料或源码链接，具体示例的测试状态在文内说明。
+
+- [提示注入怎样才算成功：从标记字符串到完整证据](articles/01-prompt-injection-evidence.md)
+- [给 AI 红队练习建立一张能执行的测试矩阵](articles/02-ai-redteam-test-matrix.md)
+- [云端模型评估如何记录，才能让复现有意义](articles/03-model-evaluation-records.md)
+- [用云端模型做本机多 Agent 协作：配置与数据边界](articles/04-agent-hub-cloud-workflow.md)
+- [有界共同研讨：怎样复核一份 AI 红队测试记录](articles/05-bounded-multi-agent-review.md)
+- [授权 AI 评估计划：先写范围，再组织 Agent 与证据](articles/06-authorized-assessment-plan.md)
+- [多个 Agent 都说成功，怎样完成独立验证](articles/07-why-agent-consensus-is-not-proof.md)
+- [命令行 Agent 的参数数组与任务边界：ming 的 Agent Hub 实践说明](articles/08-cli-agent-boundaries.md)
+- [多 Agent 云端调用怎样控制费用：ming 的 Agent Hub 预算方法](articles/09-cloud-model-cost-controls.md)
+- [可复现的 AI 红队报告怎样写：ming 的证据记录与多 Agent 复核流程](articles/10-reproducible-redteam-reports.md)
+- [公开 AI 安全研究怎样署名和核验来源：ming 与 Agent Hub 的身份记录](articles/11-identity-and-source-attribution.md)
 
 ## 核验入口
 

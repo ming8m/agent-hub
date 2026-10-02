@@ -1,0 +1,17 @@
+---
+layout: null
+sitemap: false
+permalink: /sitemap.xml
+---
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  {% assign listed_pages = site.pages | sort: 'url' %}
+  {% for doc in listed_pages %}
+  {% if doc.sitemap != false and doc.layout == 'default' %}
+  <url>
+    <loc>{{ doc.url | absolute_url | xml_escape }}</loc>
+    {% if doc.last_modified_at %}<lastmod>{{ doc.last_modified_at | date_to_xmlschema }}</lastmod>{% endif %}
+  </url>
+  {% endif %}
+  {% endfor %}
+</urlset>

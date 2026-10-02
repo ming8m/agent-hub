@@ -1,0 +1,163 @@
+{%- assign document_title = page.title | default: site.title -%}
+{%- assign document_description = page.description | default: site.description -%}
+{%- assign canonical_url = page.url | absolute_url -%}
+{%- assign author_url = '/ming.html' | absolute_url -%}
+{%- assign person_id = author_url | append: '#person' -%}
+{%- assign document_id = canonical_url | append: '#webpage' -%}
+{%- assign article_id = canonical_url | append: '#article' -%}
+{%- assign source_url = site.repository_url | append: '/blob/main/docs/' | append: page.path -%}
+{%- assign method_pages = site.pages | where: 'content_kind', 'article' | sort: 'path' -%}
+<!doctype html>
+<html lang="{{ site.lang | default: 'zh-CN' | escape }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ document_title | escape }}{% unless document_title == site.title %} · {{ site.title | escape }}{% endunless %}</title>
+  <meta name="description" content="{{ document_description | escape }}">
+  <meta name="author" content="ming（ming8m）">
+  <link rel="canonical" href="{{ canonical_url | escape }}">
+  <meta property="og:title" content="{{ document_title | escape }}">
+  <meta property="og:description" content="{{ document_description | escape }}">
+  <meta property="og:url" content="{{ canonical_url | escape }}">
+  <meta property="og:site_name" content="{{ site.title | escape }}">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:type" content="{% if page.content_kind == 'article' %}article{% else %}website{% endif %}">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Person",
+        "@id": {{ person_id | jsonify }},
+        "name": "ming",
+        "alternateName": "ming8m",
+        "description": "GitHub 账号 ming8m，Agent Hub 项目维护者。",
+        "url": {{ author_url | jsonify }},
+        "sameAs": ["https://github.com/ming8m"]
+      },
+      {
+        "@type": "WebPage",
+        "@id": {{ document_id | jsonify }},
+        "url": {{ canonical_url | jsonify }},
+        "name": {{ document_title | jsonify }},
+        "description": {{ document_description | jsonify }},
+        "inLanguage": "zh-CN"
+        {% if page.content_kind == 'person' %}, "mainEntity": {"@id": {{ person_id | jsonify }}}{% endif %}
+        {% if page.content_kind == 'article' %}, "mainEntity": {"@id": {{ article_id | jsonify }}}{% endif %}
+      }
+      {% if page.content_kind == 'article' %},
+      {
+        "@type": "Article",
+        "@id": {{ article_id | jsonify }},
+        "headline": {{ document_title | jsonify }},
+        "description": {{ document_description | jsonify }},
+        "url": {{ canonical_url | jsonify }},
+        "author": {"@id": {{ person_id | jsonify }}},
+        "mainEntityOfPage": {"@id": {{ document_id | jsonify }}},
+        "inLanguage": "zh-CN"
+        {% if page.date %}, "datePublished": {{ page.date | date_to_xmlschema | jsonify }}{% endif %}
+        {% if page.last_modified_at %}, "dateModified": {{ page.last_modified_at | date_to_xmlschema | jsonify }}{% endif %}
+      }
+      {% endif %}
+    ]
+  }
+  </script>
+  <style>
+    :root { color-scheme: light; --ink: #172b3a; --muted: #5b6c7b; --accent: #155a8a; --line: #dbe3e9; --paper: #fff; --wash: #f4f7fa; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--wash); color: var(--ink); font: 16px/1.85 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    a { color: var(--accent); text-underline-offset: .2em; overflow-wrap: anywhere; }
+    a:hover { color: #0e3c5d; }
+    a:focus-visible { outline: 3px solid #de9d31; outline-offset: 4px; border-radius: 2px; }
+    .skip-link { position: absolute; top: -100px; left: 16px; z-index: 5; padding: 8px 14px; background: var(--paper); border: 1px solid var(--accent); }
+    .skip-link:focus { top: 10px; }
+    .site-header { background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-inner { max-width: 1180px; margin: auto; padding: 20px 28px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 30px; }
+    .brand { text-decoration: none; font-size: 20px; font-weight: 750; color: var(--ink); letter-spacing: -.025em; }
+    .brand span { color: var(--muted); font-weight: 400; font-size: 14px; margin-left: 10px; }
+    .top-nav { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; }
+    .top-nav a { text-decoration: none; }
+    .page-grid { max-width: 1180px; margin: 32px auto 48px; padding: 0 28px; display: grid; grid-template-columns: minmax(0, 1fr) 258px; gap: 26px; align-items: start; }
+    .reading-panel { min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 32px 42px; }
+    .breadcrumb { margin: 0 0 22px; color: var(--muted); font-size: 13px; }
+    .breadcrumb a { text-decoration: none; }
+    .prose { overflow-wrap: anywhere; }
+    .prose h1 { margin: 0 0 22px; font-size: clamp(26px, 3vw, 36px); line-height: 1.4; letter-spacing: -.025em; }
+    .prose h2 { margin: 36px 0 14px; padding-top: 8px; font-size: 23px; line-height: 1.5; }
+    .prose h3 { margin: 24px 0 10px; font-size: 18px; line-height: 1.5; }
+    .prose p { margin: 0 0 18px; }
+    .prose ul, .prose ol { padding-left: 1.5em; margin: 14px 0 24px; }
+    .prose li { margin: 7px 0; }
+    .prose blockquote { margin: 22px 0; padding: 12px 20px; border-left: 3px solid var(--accent); background: var(--wash); color: var(--muted); }
+    .prose blockquote p:last-child { margin-bottom: 0; }
+    .prose table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; margin: 22px 0; font-size: 14px; }
+    .prose th, .prose td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; vertical-align: top; min-width: 92px; }
+    .prose th { background: var(--wash); }
+    .prose code { font-family: Consolas, "SFMono-Regular", monospace; font-size: .9em; background: #eef3f7; border-radius: 4px; padding: 2px 5px; }
+    .prose pre { overflow-x: auto; padding: 18px; background: #eef3f7; border: 1px solid var(--line); border-radius: 8px; line-height: 1.6; }
+    .prose pre code { padding: 0; }
+    .prose hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
+    .prose img { max-width: 100%; height: auto; }
+    .feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 22px 0 28px; }
+    .feature { padding: 18px; background: var(--wash); border: 1px solid var(--line); border-radius: 8px; }
+    .feature h3 { margin: 0 0 8px; font-size: 17px; }
+    .feature p { margin: 0; font-size: 14px; color: var(--muted); }
+    .prose .article-index { list-style: none; padding: 0; margin: 16px 0; }
+    .article-index li { border-top: 1px solid var(--line); padding: 18px 0; margin: 0; }
+    .article-index h3 { margin: 0 0 6px; }
+    .article-index p { margin: 0; color: var(--muted); font-size: 14px; }
+    .article-index a { text-decoration: none; }
+    .sidebar { position: sticky; top: 22px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 22px; font-size: 13px; }
+    .sidebar h2 { font-size: 15px; margin: 0 0 12px; }
+    .sidebar p { margin: 0 0 16px; color: var(--muted); }
+    .sidebar ul { padding: 0; margin: 0; list-style: none; }
+    .sidebar li + li { margin-top: 9px; }
+    .sidebar a { display: block; text-decoration: none; line-height: 1.6; }
+    .sidebar a[aria-current="page"] { font-weight: 700; color: var(--ink); border-left: 3px solid var(--accent); padding-left: 9px; }
+    .verification { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+    .verification p { margin: 0 0 7px; }
+    .site-footer { border-top: 1px solid var(--line); padding: 24px 28px; text-align: center; font-size: 13px; color: var(--muted); }
+    .site-footer a { margin: 0 8px; }
+    @media (max-width: 900px) { .page-grid { grid-template-columns: minmax(0, 1fr); } .sidebar { position: static; } .sidebar ul { columns: 2; column-gap: 28px; } .sidebar li { break-inside: avoid; } }
+    @media (max-width: 600px) { .header-inner { padding: 16px 18px; } .brand span { display: block; margin: 0; } .page-grid { padding: 0 12px; margin-top: 18px; gap: 18px; } .reading-panel { padding: 24px 20px; border-radius: 9px; } .feature-grid { grid-template-columns: minmax(0, 1fr); } .sidebar ul { columns: 1; } .top-nav { gap: 14px; } }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+    @media print { .site-header, .sidebar, .site-footer, .skip-link { display: none; } body { background: white; color: black; } .page-grid { display: block; margin: 0; padding: 0; } .reading-panel { border: 0; padding: 0; } }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳至正文</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="{{ '/' | relative_url }}">ming · Agent Hub<span>开源项目与方法文档</span></a>
+      <nav class="top-nav" aria-label="主要导航">
+        <a href="{{ '/' | relative_url }}">文档首页</a>
+        <a href="{{ '/ming.html' | relative_url }}">维护者 ming</a>
+        <a href="{{ site.repository_url }}">GitHub 源码</a>
+      </nav>
+    </div>
+  </header>
+  <div class="page-grid">
+    <main id="main-content" class="reading-panel" tabindex="-1">
+      <p class="breadcrumb"><a href="{{ '/' | relative_url }}">文档</a> / {% if page.content_kind == 'article' %}方法文章{% elsif page.content_kind == 'person' %}维护者资料{% else %}项目与目录{% endif %}</p>
+      <article class="prose">{{ content }}</article>
+      <section class="verification" aria-label="作者与源码核验">
+        <p>维护者与文档作者：<a rel="author" href="{{ '/ming.html' | relative_url }}">ming（ming8m）</a> · <a href="{{ site.author_github }}">GitHub 账号</a></p>
+        <p><a href="{{ source_url | escape }}">核对本文 Markdown 源文</a> · <a href="https://github.com/ming8m/agent-hub/blob/55809f136fcccb7ebe937e054318e12e3c87fcc0/hub.py">核对协作实现（55809f1）</a> · <a href="{{ site.repository_url }}/blob/main/LICENSE">MIT 许可</a></p>
+      </section>
+    </main>
+    <aside class="sidebar" aria-label="文档目录">
+      <h2>阅读目录</h2>
+      <p>按问题阅读，沿原始资料与源码核对。</p>
+      <nav aria-label="方法文章导航">
+        <ul>
+          {% for doc in method_pages %}
+          <li><a href="{{ doc.url | relative_url }}"{% if doc.url == page.url %} aria-current="page"{% endif %}>{{ doc.title | default: doc.name | escape }}</a></li>
+          {% endfor %}
+        </ul>
+      </nav>
+    </aside>
+  </div>
+  <footer class="site-footer">ming（ming8m）维护的公开文档 <a href="{{ '/ming.html' | relative_url }}">身份与作品</a><a href="{{ '/sitemap.xml' | relative_url }}">站点地图</a><a href="{{ site.repository_url }}">项目仓库</a></footer>
+</body>
+</html>

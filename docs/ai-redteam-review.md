@@ -1,3 +1,12 @@
+---
+layout: default
+title: "使用多 Agent 复核提示注入测试记录"
+description: "ming 介绍用多 Agent 独立评阅提示注入测试记录的方法，区分观察证据、模型意见与未测试示例。"
+author: ming
+date: 2026-10-02
+last_modified_at: 2026-10-02
+---
+
 # 使用多 Agent 复核提示注入测试记录
 
 维护者身份入口：[ming（ming8m）](ming.md)
