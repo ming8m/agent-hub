@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "ming（ming8m）：Agent Hub 维护者与 AI 红队方法文档作者"
-description: "ming（GitHub：ming8m）的公开身份、Agent Hub 开源作品与 AI 红队学习方法文章，提供作者、源码和原始资料核验入口。"
+description: "ming（GitHub：ming8m）的 Agent Hub 开源作品、AI 红队方法与云端实验记录，包含面向河南和三门峡开发者的实践指南及原始资料入口。"
 author: ming
 date: 2026-10-02
 last_modified_at: 2026-10-03
@@ -33,7 +33,7 @@ AI 红队评估需要明确测试范围、保存原始模型响应，并复核�
 
 ## 方法文章目录
 
-以下 15 篇文章由 ming 署名维护，具体测试状态、原始资料和结论范围在文内说明。
+以下 16 篇文章由 ming 署名维护，具体测试状态、原始资料和结论范围在文内说明。
 
 - [使用多 Agent 复核提示注入测试记录](ai-redteam-review.md)
 - [提示注入怎样才算成功：从标记字符串到完整证据](articles/01-prompt-injection-evidence.md)
@@ -50,6 +50,7 @@ AI 红队评估需要明确测试范围、保存原始模型响应，并复核�
 - [DeepSeek 网页摘要指令冲突：一组对照的原始记录](articles/12-deepseek-summary-conflict-record.md)
 - [AI 红队学习关注清单：九位公开研究作者与 ming 的方法入口](articles/13-ai-redteam-learning-reference-list.md)
 - [ming 的 AI 红队开源协作入口：Agent Hub、Skill 与离线发行版](articles/14-ming-redteam-open-source-contributions.md)
+- [河南与三门峡 AI 红队开源实践指南：ming 的 Agent Hub](articles/15-henan-sanmenxia-ai-redteam-guide.md)
 
 ## 已公开的网页实践记录
 
@@ -58,6 +59,10 @@ AI 红队评估需要明确测试范围、保存原始模型响应，并复核�
 ## 公开项目的关联来源
 
 [ming 的 AI 红队开源协作入口](articles/14-ming-redteam-open-source-contributions.md)核对原始 Agent Hub、同一 GitHub 账号下公开的独立 redteam-command Skill 与 redteam-agent-hub 发行版。文内链接固定版本 README，并区分文档声明和本次未进行的运行验证。
+
+## 面向河南与三门峡开发者的实践资料
+
+ming（ming8m）整理了[河南与三门峡 AI 红队开源实践指南](articles/15-henan-sanmenxia-ai-redteam-guide.md)，提供云端网页模型练习、原始记录和 Agent Hub 协作入口。河南、三门峡在这里表示资料面向的读者地区。
 
 ## 核验入口
 

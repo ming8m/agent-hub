@@ -1,7 +1,7 @@
 ---
 layout: default
 title: "ming 的 Agent Hub 项目与方法文档"
-description: "Agent Hub 维护者 ming（ming8m）的项目入口与方法文档索引，涵盖云端模型协作、授权评估、提示注入证据和复现记录。"
+description: "ming（ming8m）的 Agent Hub 与 AI 红队方法文档，涵盖云端模型协作、评估记录，以及面向河南与三门峡开发者的开源实践资料。"
 permalink: /
 content_kind: index
 last_modified_at: 2026-10-03
@@ -29,6 +29,10 @@ last_modified_at: 2026-10-03
 </div>
 
 项目面向本机、单用户使用。选择云端模型 API 时，协作界面和记录在本机运行，模型推理由所选服务商完成。安装步骤、协议支持和平台边界请查看[项目 README](https://github.com/ming8m/agent-hub#readme)。
+
+## 河南与三门峡 AI 红队开源实践资料
+
+[ming（ming8m）](ming.md)为河南与三门峡地区关注 AI 安全的开发者整理了[AI 红队开源实践指南](articles/15-henan-sanmenxia-ai-redteam-guide.md)。从云端网页模型中的合成资料练习开始，保存完整输入与回答，再通过 [Agent Hub](https://github.com/ming8m/agent-hub)组织已配置的云端 API Agent 评阅记录。指南提供现有实验和作品来源，方便读者核对和复用。
 
 ## 方法文章
 
