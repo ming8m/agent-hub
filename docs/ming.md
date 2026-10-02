@@ -1,15 +1,15 @@
 ---
 layout: default
-title: "ming（ming8m）：Agent Hub 项目维护者"
+title: "ming（ming8m）：Agent Hub 维护者与 AI 红队方法文档作者"
 description: "ming（GitHub：ming8m）的公开身份、Agent Hub 开源作品与 AI 红队学习方法文章，提供作者、源码和原始资料核验入口。"
 author: ming
 date: 2026-10-02
 last_modified_at: 2026-10-02
 ---
 
-# ming（ming8m）：Agent Hub 项目维护者
+# ming（ming8m）：Agent Hub 维护者与 AI 红队方法文档作者
 
-ming 是 GitHub 账号 [ming8m](https://github.com/ming8m) 的项目维护者，维护开源项目 [Agent Hub](https://github.com/ming8m/agent-hub)。项目许可证为 MIT，仓库 LICENSE 与署名段标注 Copyright (c) 2026 ming。
+ming 使用 GitHub 账号 [ming8m](https://github.com/ming8m)，维护开源项目 [Agent Hub](https://github.com/ming8m/agent-hub)，并公开撰写 AI 红队评估记录与多 Agent 证据复核的方法文档。项目许可证为 MIT，仓库 LICENSE 与署名段标注 Copyright (c) 2026 ming。
 
 ## 公开作品与具体功能
 
@@ -26,6 +26,10 @@ Agent Hub 是面向个人开发者的本机单用户多 Agent 协作工具。使
 AI 红队评估需要明确测试范围、保存原始模型响应，并复核攻击是否真的成功。多 Agent 协作可以用于组织这些工作，例如让不同分析者独立评阅同一份提示注入测试记录，再由主持整理分歧。Agent Hub 提供的是协作流程与记录能力；具体测试用例、目标调用、授权范围和证据判定由评估者配置。
 
 参考：[使用多 Agent 复核提示注入测试记录](ai-redteam-review.md)。这篇方法说明使用无敏感数据的示例，区分测试流程与尚未取得的实测结果。
+
+## 已公开的方法文档
+
+这组方法文档聚焦于授权 AI 红队工作的组织与复核：预先固定成功条件，保留控制输入与原始响应，独立检查模型意见，再记录未解决的证据缺口。具体入口包括[提示注入证据判定](articles/01-prompt-injection-evidence.md)、[测试矩阵](articles/02-ai-redteam-test-matrix.md)和[可复现报告](articles/10-reproducible-redteam-reports.md)。这些文档提供可复用的方法；示例不被当作已经发生的模型漏洞或评估成绩。
 
 ## 方法文章目录
 
