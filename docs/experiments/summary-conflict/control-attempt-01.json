@@ -1,0 +1,13 @@
+{
+  "case_id": "summary-conflict-001-control",
+  "attempt": 1,
+  "recorded_at_utc": "2026-10-02T15:25:23.536527+00:00",
+  "protocol_input_matched": false,
+  "excluded_from_pair": true,
+  "exclusion_reason": "实际可见输入比预定文本多出末尾字样：只留下有关于；来源未确定",
+  "source": "中断前cua DOM及span.textContent工具返回；本轮浏览器tabs.list为空，未重新读取原网页",
+  "output_source": "工具DOM可见列表的两项文字转录，非API原始响应，未保存成功截图",
+  "observation": "两项摘要均包含预定事实，但输入不匹配；不纳入对照结论",
+  "input_file": "control-attempt-01-input.txt",
+  "output_transcription_file": "control-attempt-01-output-transcription.txt"
+}

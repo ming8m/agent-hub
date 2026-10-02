@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "experiment_id": "summary-conflict-001",
+  "hash_algorithm": "SHA-256 of complete raw file bytes",
+  "path_base": "this directory",
+  "selected_original_and_review_files": 16,
+  "source_verified_file_count": 16,
+  "hashed_file_count": 18,
+  "package_file_count_including_manifest": 19,
+  "manifest_excludes_itself": true,
+  "original_copy_note": "所有所选原始记录及 review.json 保留来源原字节；长度和 SHA-256 均与来源一致。",
+  "integrity_limit": "哈希固定文件快照和复制一致性，不单独证明采集来源真实性。",
+  "files": [
+    {
+      "file": "protocol.json",
+      "kind": "preregistered_protocol",
+      "bytes": 3446,
+      "sha256": "a8695109da36c23847e5174f61eccfade2d97ddb5be1f8d4044c445721003389",
+      "source_copy_verified": true
+    },
+    {
+      "file": "control-attempt-01.json",
+      "kind": "original_record",
+      "bytes": 773,
+      "sha256": "6f63da9bcb41b1470f676fdd07c31b4889bdd769a220a5e94e6a82b1afa5a50f",
+      "source_copy_verified": true
+    },
+    {
+      "file": "control-attempt-01-input.txt",
+      "kind": "original_record",
+      "bytes": 312,
+      "sha256": "180ad23edf62b7e89774449c33881af5e00dc74195019a17e83b7fe9018d52e2",
+      "source_copy_verified": true
+    },
+    {
+      "file": "control-attempt-01-output-transcription.txt",
+      "kind": "original_record",
+      "bytes": 102,
+      "sha256": "3e224323d64be5d6a1ff2e9b3ea0ed46fa6089e659319d2bfec069a029873724",
+      "source_copy_verified": true
+    },
+    {
+      "file": "control-attempt-02.json",
+      "kind": "original_record",
+      "bytes": 805,
+      "sha256": "108848ba752aad47dc2861ac337737aa2951da5b1679ac414f55cd1aa808c125",
+      "source_copy_verified": true
+    },
+    {
+      "file": "control-attempt-02-input.txt",
+      "kind": "original_record",
+      "bytes": 288,
+      "sha256": "ebe24259b2e233d73f1cf43af2676b84543befe17c9dabf43ba848229f3a73ed",
+      "source_copy_verified": true
+    },
+    {
+      "file": "control-attempt-02-output.txt",
+      "kind": "original_record",
+      "bytes": 102,
+      "sha256": "7ce075d8f9e64ea9b63c92ecacc6f70aa15fa4011f7471ad1a8c734e364c8f1d",
+      "source_copy_verified": true
+    },
+    {
+      "file": "control-attempt-02-dom.txt",
+      "kind": "original_record",
+      "bytes": 739,
+      "sha256": "07afbee5829ae15ff55a6803dbe4fdffa3ac8cd2fa181e4da18c18bcf58b91fe",
+      "source_copy_verified": true
+    },
+    {
+      "file": "control-attempt-02.jpg",
+      "kind": "original_record",
+      "bytes": 43506,
+      "sha256": "6252db4ebcf2f686a3881596138ea9100e30cc30bf3f0176e3774586a5f1399a",
+      "source_copy_verified": true
+    },
+    {
+      "file": "injection-preflight.json",
+      "kind": "original_record",
+      "bytes": 610,
+      "sha256": "55f96d2cdfd9282230397c8cccd53763cbd4635f77bb6e9a1742fe5bee8b850f",
+      "source_copy_verified": true
+    },
+    {
+      "file": "injection-attempt-01.json",
+      "kind": "original_record",
+      "bytes": 1486,
+      "sha256": "6a0d34f2eedc17c406262c8175d7c30b7c79ead0ffc1a38872aa38f2c4164fdb",
+      "source_copy_verified": true
+    },
+    {
+      "file": "injection-attempt-01-input.txt",
+      "kind": "original_record",
+      "bytes": 385,
+      "sha256": "87106a244e94772e3e3608bf4cdb6f70c6bc8faca60ab12834f3bbfb28743df3",
+      "source_copy_verified": true
+    },
+    {
+      "file": "injection-attempt-01-output.txt",
+      "kind": "original_record",
+      "bytes": 176,
+      "sha256": "3c3e3a1e6f8cc1e88b6ba12a49ac8becfe02f8e464d5b173256d343397e24947",
+      "source_copy_verified": true
+    },
+    {
+      "file": "injection-attempt-01-dom.txt",
+      "kind": "original_record",
+      "bytes": 910,
+      "sha256": "70405824f42d0d28c30eac4e055a5d676297360c5e1c8b0b6c206ca5d2511ef1",
+      "source_copy_verified": true
+    },
+    {
+      "file": "injection-attempt-01.jpg",
+      "kind": "original_record",
+      "bytes": 55688,
+      "sha256": "8b574ef4c8e87046055e301f625e8283471c77203401c2a1f34fa8869fffd29d",
+      "source_copy_verified": true
+    },
+    {
+      "file": "review.json",
+      "kind": "file_review",
+      "bytes": 8732,
+      "sha256": "4d60ba7088dceb01eb5fafec4ba292a15d4eff16f5e376a60c2fff55846291b1",
+      "source_copy_verified": true
+    },
+    {
+      "file": "results.json",
+      "kind": "package_summary",
+      "bytes": 5631,
+      "sha256": "8a1cfe04818cc12771fabbd00e4370730d8ec62c68049f6ec286069f680c0d96"
+    },
+    {
+      "file": "README.txt",
+      "kind": "package_summary",
+      "bytes": 4098,
+      "sha256": "8885c035ec358e649219e25b88f1b40598ff3581b13eb305778a7d441ebc2c55"
+    }
+  ]
+}

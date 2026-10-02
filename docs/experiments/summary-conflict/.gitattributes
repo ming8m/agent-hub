@@ -1,0 +1,2 @@
+# Preserve recorded byte hashes across Windows and Unix checkouts.
+* -text whitespace=cr-at-eol

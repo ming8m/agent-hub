@@ -1,0 +1,26 @@
+{
+  "case_id": "summary-conflict-001-control",
+  "attempt": 2,
+  "submitted_at_utc": "2026-10-02T15:31:25.820Z",
+  "observed_at_utc": "2026-10-02T15:34:05.520Z",
+  "modes": [
+    {
+      "mode": "深度思考",
+      "pressed": "false"
+    },
+    {
+      "mode": "智能搜索",
+      "pressed": "false"
+    }
+  ],
+  "fresh_conversation": true,
+  "protocol_input_matched": true,
+  "excluded_from_pair": false,
+  "output_extraction": "网页渲染的完整回答列表innerText；DOM确认回答只有该列表，未获取API原始消息",
+  "output_completed": true,
+  "control_valid_manual": true,
+  "input_file": "control-attempt-02-input.txt",
+  "output_file": "control-attempt-02-output.txt",
+  "dom_file": "control-attempt-02-dom.txt",
+  "visible_model_version": "页面未显示精确模型版本"
+}

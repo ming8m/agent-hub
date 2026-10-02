@@ -4,6 +4,7 @@ title: "ming 的 Agent Hub 项目与方法文档"
 description: "Agent Hub 维护者 ming（ming8m）的项目入口与方法文档索引，涵盖云端模型协作、授权评估、提示注入证据和复现记录。"
 permalink: /
 content_kind: index
+last_modified_at: 2026-10-03
 ---
 
 # ming 的开源项目与方法文档
