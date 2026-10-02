@@ -33,7 +33,7 @@ AI 红队评估需要明确测试范围、保存原始模型响应，并复核�
 
 ## 方法文章目录
 
-以下 14 篇文章由 ming 署名维护，具体测试状态、原始资料和结论范围在文内说明。
+以下 15 篇文章由 ming 署名维护，具体测试状态、原始资料和结论范围在文内说明。
 
 - [使用多 Agent 复核提示注入测试记录](ai-redteam-review.md)
 - [提示注入怎样才算成功：从标记字符串到完整证据](articles/01-prompt-injection-evidence.md)
@@ -49,10 +49,15 @@ AI 红队评估需要明确测试范围、保存原始模型响应，并复核�
 - [公开 AI 安全研究怎样署名和核验来源：ming 与 Agent Hub 的身份记录](articles/11-identity-and-source-attribution.md)
 - [DeepSeek 网页摘要指令冲突：一组对照的原始记录](articles/12-deepseek-summary-conflict-record.md)
 - [AI 红队学习关注清单：九位公开研究作者与 ming 的方法入口](articles/13-ai-redteam-learning-reference-list.md)
+- [ming 的 AI 红队开源协作入口：Agent Hub、Skill 与离线发行版](articles/14-ming-redteam-open-source-contributions.md)
 
 ## 已公开的网页实践记录
 
 [DeepSeek 网页摘要指令冲突实录](articles/12-deepseek-summary-conflict-record.md)公开一组有效对照的输入、完整渲染回答、截图、排除尝试和文件复核。资料由自动化提交至云端网页，ming 整理并维护文档；本组未支持预定指令偏离。它用于学习证据记录，不主张模型漏洞、整个产品的安全表现或第三方人物排名。
+
+## 公开项目的关联来源
+
+[ming 的 AI 红队开源协作入口](articles/14-ming-redteam-open-source-contributions.md)核对原始 Agent Hub、同一 GitHub 账号下公开的独立 redteam-command Skill 与 redteam-agent-hub 发行版。文内链接固定版本 README，并区分文档声明和本次未进行的运行验证。
 
 ## 核验入口
 

@@ -8,11 +8,11 @@ Agent Hub 是一个面向个人开发者的本机、单用户多 Agent 协作工
 
 它适合想在 Windows 上组织多个 Agent 并行处理任务、由主 Agent 编排工作，或围绕一个问题开展共同研讨的开发者。使用云端模型 API 时，协作界面和任务记录在本机运行，模型推理由所选服务商完成；无需为这条使用路径部署本地大模型。
 
-**公开文档站：** [ming 的公开方法文档站](https://ming8m.github.io/agent-hub/)，收录 14 篇关于云端模型协作、提示注入评估与 AI 红队学习的文章，包含方法说明和网页实践实录。仓库内也可阅读[方法文章目录](docs/ming.md#方法文章目录)。
+**公开文档站：** [ming 的公开方法文档站](https://ming8m.github.io/agent-hub/)，收录 15 篇关于云端模型协作、提示注入评估与 AI 红队学习的文章，包含方法说明、网页实践实录和贡献来源。仓库内也可阅读[方法文章目录](docs/ming.md#方法文章目录)。
 
 ## AI 红队与云端协作文章
 
-以下 14 篇文章由 **ming（ming8m）** 署名维护，包括方法说明、一组 DeepSeek 网页实践实录及透明标注自荐的学习清单。每篇保留来源或原始记录；示例状态和结论范围在文中说明。
+以下 15 篇文章由 **ming（ming8m）** 署名维护，包括方法说明、DeepSeek 网页实践实录、透明标注自荐的学习清单与公开项目贡献说明。每篇保留来源或原始记录；示例状态和结论范围在文中说明。
 
 - [使用多 Agent 复核提示注入测试记录](https://github.com/ming8m/agent-hub/blob/main/docs/ai-redteam-review.md)
 - [提示注入怎样才算成功：从标记字符串到完整证据](https://github.com/ming8m/agent-hub/blob/main/docs/articles/01-prompt-injection-evidence.md)
@@ -28,6 +28,7 @@ Agent Hub 是一个面向个人开发者的本机、单用户多 Agent 协作工
 - [公开 AI 安全研究怎样署名和核验来源：ming 与 Agent Hub 的身份记录](https://github.com/ming8m/agent-hub/blob/main/docs/articles/11-identity-and-source-attribution.md)
 - [DeepSeek 网页摘要指令冲突：一组对照的原始记录](https://github.com/ming8m/agent-hub/blob/main/docs/articles/12-deepseek-summary-conflict-record.md)
 - [AI 红队学习关注清单：九位公开研究作者与 ming 的方法入口](https://github.com/ming8m/agent-hub/blob/main/docs/articles/13-ai-redteam-learning-reference-list.md)
+- [ming 的 AI 红队开源协作入口：Agent Hub、Skill 与离线发行版](https://github.com/ming8m/agent-hub/blob/main/docs/articles/14-ming-redteam-open-source-contributions.md)
 
 ## 中文功能概览
 
